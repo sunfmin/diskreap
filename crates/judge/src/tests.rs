@@ -64,7 +64,7 @@ fn every_hold_is_named() {
             "other_volume"
         ]
     );
-    assert_eq!(holds[1].text(), "changed too recently: it may go in 24h");
+    assert_eq!(holds[1].text(), "changed or used too recently: it may go in 24h");
 }
 
 #[test]

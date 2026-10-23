@@ -74,8 +74,28 @@ fn a_recent_change_anywhere_inside_holds_it() {
     file(&proj.join("target/deep/deeper/new.o"), "just built");
     let clean = env.run(&["clean"]);
     assert_eq!(clean.answer["rules"]["cargo-target"]["holds"]["recent"], 1);
-    assert!(holds_of(&clean, &proj.join("target"))[0].starts_with("changed too recently"));
+    assert!(holds_of(&clean, &proj.join("target"))[0].starts_with("changed or used too recently"));
     assert!(proj.join("target/deep/deeper/new.o").exists());
+}
+
+#[test]
+fn a_file_read_lately_holds_it_though_nothing_changed() {
+    let mut env = Env::with_rules(json!([cargo_target_rule()]));
+    let proj = env.home.join("dev/a");
+    file(&proj.join("Cargo.toml"), "");
+    let used = proj.join("target/debug/a");
+    file(&used, "read every day");
+    env.later();
+    let now = env.now.unwrap();
+    // Read an hour before the run: its access time moves, its writes do not.
+    let read = std::time::UNIX_EPOCH + std::time::Duration::from_secs((now - 3600) as u64);
+    let f = std::fs::File::options().write(true).open(&used).unwrap();
+    f.set_times(std::fs::FileTimes::new().set_accessed(read)).unwrap();
+    drop(f);
+    let clean = env.run(&["clean"]);
+    assert_eq!(clean.answer["rules"]["cargo-target"]["holds"]["recent"], 1, "{}", clean.stdout);
+    assert!(holds_of(&clean, &proj.join("target"))[0].starts_with("changed or used too recently"));
+    assert!(used.exists());
 }
 
 #[test]

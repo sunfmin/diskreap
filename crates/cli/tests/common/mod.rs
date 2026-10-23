@@ -4,9 +4,10 @@ use std::process::{Command, Stdio};
 
 use serde_json::{Value, json};
 
-/// A day and a bit, in seconds: what the clock is moved on by so that
-/// what a test wrote is old enough for a Rule of a day.
-pub const LATER: i64 = 90_000;
+/// Three days, in seconds: what the clock is moved on by so that what a
+/// test wrote is old enough for a Rule of a day, a read counting as a day
+/// later than its access time says.
+pub const LATER: i64 = 259_200;
 
 pub struct Env {
     _dir: tempfile::TempDir,
@@ -119,7 +120,7 @@ impl Env {
         Out { code: out.status.code().unwrap_or(-1), answer, events, stdout }
     }
 
-    /// Runs with the clock moved on past a day.
+    /// Runs with the clock moved on by LATER.
     pub fn later(&mut self) -> &mut Env {
         self.now = Some(now() + LATER);
         self

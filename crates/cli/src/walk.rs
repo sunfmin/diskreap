@@ -149,6 +149,9 @@ fn children(dir: &Path, dev: u64) -> Vec<(String, PathBuf, bool)> {
     out
 }
 
+/// How much later than its access time a file may have been read last.
+pub const READ_LAG: i64 = 86_400;
+
 /// What is true of a Match's tree.
 #[derive(Default)]
 pub struct Tree {
@@ -184,7 +187,19 @@ pub fn tree(path: &Path, uid: u32, dev: u64, cutoff: Option<i64>) -> Tree {
     // What one entry says; whether to go into it.
     let see = |path: &Path, meta: &std::fs::Metadata| -> bool {
         bytes.fetch_add(meta.blocks().saturating_mul(512), Ordering::Relaxed);
-        let time = meta.mtime().max(meta.ctime());
+        // A file's last read is its access time, which macOS moves on only
+        // when it is older than the file's changes or than a day (as Linux's
+        // relatime): a file read just now may show a read up to a day old,
+        // so a read counts as a day later than it says. A directory's access
+        // time is not use: listing it, as this walk does, moves it. Where the
+        // access time cannot be read (a volume that keeps none says 0), the
+        // writes alone count: whichever is newest is the last use.
+        let atime = meta.accessed().ok().map(|_| meta.atime()).filter(|&t| t > 0);
+        let read = match atime {
+            Some(t) if !meta.is_dir() => t.saturating_add(READ_LAG),
+            _ => i64::MIN,
+        };
+        let time = meta.mtime().max(meta.ctime()).max(read);
         newest.fetch_max(time, Ordering::Relaxed);
         if cutoff.is_some_and(|c| time > c) {
             stop.store(true, Ordering::Relaxed);

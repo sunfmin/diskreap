@@ -26,8 +26,10 @@ pub struct Facts {
     /// Disk space its entries take, counted as allocated blocks: a file APFS
     /// cloned is counted in each copy.
     pub bytes: u64,
-    /// Seconds since 1970 of the newest change to it or anything in it, the
-    /// later of each entry's modification and status change.
+    /// Seconds since 1970 of the latest it, or anything in it, was changed or
+    /// used: the latest of each entry's modification and status change and,
+    /// for a file, the latest it may have been read (see the effect crate).
+    /// A directory's reading is not use: listing it is how a walk reads it.
     pub newest: i64,
     /// Something in it is owned by another user.
     pub foreign: bool,
@@ -84,7 +86,7 @@ impl Hold {
         match self {
             Hold::Floor(why) => format!("the floor keeps it: it {why}"),
             Hold::Recent(left) => {
-                format!("changed too recently: it may go in {}", wait_text(*left))
+                format!("changed or used too recently: it may go in {}", wait_text(*left))
             }
             Hold::InUse => "a process has a file in it open, or works in it".into(),
             Hold::Running(name) => format!("{name} is running"),
@@ -146,7 +148,7 @@ fn decide(holds: Holds) -> Verdict {
     if holds.clear { Verdict::Delete } else { Verdict::Hold(holds.list) }
 }
 
-/// Seconds from the newest change to now; none for a change in the future.
+/// Seconds from the latest change or use to now; none for one in the future.
 #[spec(fn(now: i64, newest: i64) -> u64{v: now <= newest => v == 0})]
 pub fn waited(now: i64, newest: i64) -> u64 {
     if now > newest { now.abs_diff(newest) } else { 0 }
