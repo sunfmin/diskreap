@@ -176,3 +176,38 @@ proptest! {
         prop_assert_eq!(floor(&path, &p).is_none(), deep);
     }
 }
+
+#[test]
+fn any_depth_does_not_go_into_hidden_directories() {
+    let p = places();
+    let home = compile("~/**/node_modules", &p).unwrap();
+    assert!(skipped("/Users/me", ".pi", &home, &p));
+    assert!(skipped("/Users/me/dev/a", ".venv", &home, &p));
+    assert!(!reached(&home, "/Users/me/.pi/agent/releases/1/node_modules", &p));
+    assert!(!reached(&home, "/Users/me/dev/a/.venv/lib/x/node_modules", &p));
+    assert!(reached(&home, "/Users/me/dev/a/node_modules", &p));
+    let venv = compile("~/**/.venv", &p).unwrap();
+    assert!(reached(&venv, "/Users/me/dev/a/.venv", &p), "a hidden Match is still found");
+    let inside = compile("~/.cache/**/node_modules", &p).unwrap();
+    assert!(!skipped("/Users/me", ".cache", &inside, &p), "a glob that starts inside it goes in");
+    assert!(skipped("/Users/me/.cache/x", ".y", &inside, &p));
+}
+
+#[test]
+fn a_marker_is_one_file_or_a_list_of_which_one_must_be_there() {
+    let one = rule(json!({"id": "a", "glob": "~/**/target", "marker": "Cargo.toml", "why": "w"}))
+        .unwrap();
+    assert_eq!(one.marker, ["Cargo.toml"]);
+    assert_eq!(rule_json(&one)["marker"], "Cargo.toml");
+    let locks = json!(["package-lock.json", "pnpm-lock.yaml"]);
+    let many =
+        rule(json!({"id": "b", "glob": "~/**/node_modules", "marker": locks, "why": "w"})).unwrap();
+    assert_eq!(many.marker, ["package-lock.json", "pnpm-lock.yaml"]);
+    assert_eq!(rule_json(&many)["marker"], locks);
+    assert_eq!(rule(rule_json(&many)).unwrap(), many);
+    for bad in [json!([]), json!(["a/b"]), json!([""]), json!(3), json!([1])] {
+        let faults =
+            rule(json!({"id": "c", "glob": "~/**/x", "marker": bad, "why": "w"})).unwrap_err();
+        assert!(faults.iter().any(|f| f.contains("has the marker")), "{bad}: {faults:?}");
+    }
+}

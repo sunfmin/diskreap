@@ -95,8 +95,9 @@ pub fn age_text(age: Age) -> String {
 pub struct Rule {
     pub id: String,
     pub glob: String,
-    /// The file that must sit beside a Match for it to count.
-    pub marker: Option<String>,
+    /// The files of which one must sit beside a Match for it to count; none
+    /// when the Rule needs no marker.
+    pub marker: Vec<String>,
     pub min_age: Age,
     /// Names of programs: while any runs, nothing this Rule matches goes.
     pub unless_running: Vec<String>,
@@ -181,15 +182,20 @@ pub fn parse_rule(value: &Value, places: &Places) -> Result<Rule, Vec<String>> {
     }
     let why = why.unwrap_or_default();
     let marker = match object.get("marker") {
-        None | Some(Value::Null) => None,
-        Some(Value::String(m)) if !m.is_empty() && !m.contains('/') => Some(m.clone()),
-        Some(other) => {
-            faults.push(format!(
-                "the Rule `{id}` has the marker `{other}`: a marker is one file name, with no `/`"
-            ));
-            None
+        None | Some(Value::Null) => Vec::new(),
+        Some(Value::String(m)) => vec![m.clone()],
+        Some(Value::Array(items)) => {
+            items.iter().map(|m| m.as_str().unwrap_or_default().to_string()).collect()
         }
+        Some(_) => vec![String::new()],
     };
+    let file_name = |m: &String| !m.is_empty() && !m.contains('/');
+    if !marker.iter().all(file_name) || object.get("marker") == Some(&Value::Array(Vec::new())) {
+        faults.push(format!(
+            "the Rule `{id}` has the marker `{}`: a marker is a file name with no `/`, or a list of them of which one must be there",
+            object.get("marker").cloned().unwrap_or_default()
+        ));
+    }
     let min_age = match object.get("min_age") {
         None | Some(Value::Null) => ONE_DAY,
         Some(Value::String(t)) => parse_age(t).unwrap_or_else(|f| {
@@ -207,7 +213,7 @@ pub fn parse_rule(value: &Value, places: &Places) -> Result<Rule, Vec<String>> {
     let unless_installed = names(object, "unless_installed", &id, &mut faults);
     match compile(&glob, places) {
         Ok(compiled) => {
-            if compiled.any_depth() && marker.is_none() {
+            if compiled.any_depth() && marker.is_empty() {
                 faults.push(format!(
                     "the Rule `{id}` searches any depth (`**`) and names no marker: name the file that sits beside every Match, like `\"marker\": \"Cargo.toml\"`"
                 ));
@@ -297,8 +303,14 @@ pub fn rule_json(rule: &Rule) -> Value {
     let mut object = Map::new();
     object.insert("id".into(), Value::String(rule.id.clone()));
     object.insert("glob".into(), Value::String(rule.glob.clone()));
-    if let Some(marker) = &rule.marker {
-        object.insert("marker".into(), Value::String(marker.clone()));
+    match (rule.marker.first(), rule.marker.len()) {
+        (None, _) => {}
+        (Some(one), 1) => {
+            object.insert("marker".into(), Value::String(one.clone()));
+        }
+        (Some(_), _) => {
+            object.insert("marker".into(), strings(&rule.marker));
+        }
     }
     object.insert("min_age".into(), Value::String(age_text(rule.min_age)));
     if !rule.unless_running.is_empty() {
@@ -526,13 +538,17 @@ pub fn floor(path: &str, places: &Places) -> Option<&'static str> {
 }
 
 /// The directories a `**` does not go into unless the glob's base is already
-/// inside them: `~/Library` and `~/.Trash`. A `.git` directory is never gone
-/// into.
+/// inside them: `~/Library`, and every hidden directory (its name starts with
+/// `.`), where tools keep what they installed: a `node_modules` in
+/// `~/.pi/...` is a program, not a project's build. A hidden directory can
+/// still be a Match itself (`.venv`); only what is inside it is not looked at.
+/// A `.git` directory is never gone into.
 pub fn skipped(dir: &str, name: &str, glob: &Glob, places: &Places) -> bool {
     if name == ".git" {
         return true;
     }
-    if dir != places.home || (name != "Library" && name != ".Trash") {
+    let hidden = name.starts_with('.');
+    if !hidden && (dir != places.home || name != "Library") {
         return false;
     }
     let child = format!("{dir}/{name}");

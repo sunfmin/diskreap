@@ -111,10 +111,10 @@ impl<'a> Run<'a> {
             event(json!({"event": "start", "rule": rule.id, "glob": rule.glob}));
             lanes.push(self.lane(rule)?);
         }
-        let owned: Vec<(usize, Glob, Option<&str>)> = lanes
+        let owned: Vec<(usize, Glob, &[String])> = lanes
             .iter()
             .enumerate()
-            .filter_map(|(i, l)| l.glob.clone().ok().map(|g| (i, g, l.rule.marker.as_deref())))
+            .filter_map(|(i, l)| l.glob.clone().ok().map(|g| (i, g, l.rule.marker.as_slice())))
             .collect();
         let globs: Vec<walk::Wanted> = owned.iter().map(|(i, g, m)| (*i, g, *m)).collect();
         let (uid, dev, now, delete) = (world.uid, world.dev, world.now, self.delete);

@@ -32,7 +32,8 @@ WHAT A RUN DOES
     - no process holds a file in it open or works in it (lsof);
     - none of the Rule's unless_running programs runs, and none of its
       unless_installed apps is installed;
-    - with a marker, that file sits beside it (`Cargo.toml` beside `target`).
+    - with a marker, that file (or one of the list) sits beside it
+      (`Cargo.toml` beside `target`, a lockfile beside `node_modules`).
   Anything that fails a check is held, and the answer says why.
 
 COMMANDS
@@ -66,9 +67,16 @@ A RULE
   id                short name: lowercase letters, digits, `-`
   glob              starts at ~/, $TMPDIR/ or $VARFOLDER/ (your /var/folders
                     entry, where $TMPDIR is its T); `*` and `?` in a name,
-                    `**` for any depth of directories, which skips ~/Library,
-                    ~/.Trash and .git unless the glob starts inside them
-  marker            a file that must sit beside a Match; needed with `**`
+                    `**` for any depth of directories, which does not go into
+                    ~/Library or any hidden directory (`.name`: where tools
+                    keep what they installed) unless the glob starts inside
+                    it, nor ever into .git; a hidden directory can still be
+                    a Match itself (`.venv`)
+  marker            a file that must sit beside a Match, or a list of files
+                    of which one must; needed with `**`. Pick a file only a
+                    project has, not an installed copy: a lockfile beside
+                    node_modules, not package.json, which every installed
+                    package has too
   min_age           30m, 12h, 1d, 2w; default 1d
   unless_running    programs: while one runs, nothing goes
   unless_installed  app names or bundle ids: while one is installed, nothing goes
