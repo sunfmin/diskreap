@@ -32,6 +32,8 @@ pub struct Run<'a> {
     pub world: &'a World,
     pub delete: bool,
     pub all: bool,
+    /// The one path to judge, in place of walking for every Match.
+    pub only: Option<PathBuf>,
     open: Option<Open>,
     programs: Option<Vec<String>>,
     apps: Option<Apps>,
@@ -53,7 +55,7 @@ struct Lane<'r> {
 
 impl<'a> Run<'a> {
     pub fn new(world: &'a World, delete: bool, all: bool) -> Run<'a> {
-        Run { world, delete, all, open: None, programs: None, apps: None }
+        Run { world, delete, all, only: None, open: None, programs: None, apps: None }
     }
 
     /// One Rule's run.
@@ -177,7 +179,10 @@ impl<'a> Run<'a> {
             event(said);
             lane.judged.push(one);
         };
-        walk::matches(&globs, places, dev, &mut found);
+        match self.only.clone() {
+            Some(path) => walk::at(&globs, places, dev, &path, &mut found),
+            None => walk::matches(&globs, places, dev, &mut found),
+        }
         self.open = open;
         if let Some(e) = fault {
             return Err(e);
@@ -208,10 +213,18 @@ impl<'a> Run<'a> {
 }
 
 /// `plan` and `clean`: every Rule, or the one named.
-pub fn rules(world: &World, gist: &str, rules: &[Rule], delete: bool, all: bool) -> Result<Value> {
+pub fn rules(
+    world: &World,
+    gist: &str,
+    rules: &[Rule],
+    only: Option<PathBuf>,
+    delete: bool,
+    all: bool,
+) -> Result<Value> {
     let start = Instant::now();
     let free_before = if delete { Some(system::free(&world.places.home)?) } else { None };
     let mut run = Run::new(world, delete, all);
+    run.only = only.clone();
     let mut per = serde_json::Map::new();
     let (mut matched, mut deletable, mut deletable_bytes, mut deleted, mut deleted_bytes) =
         (0u64, 0u64, 0u64, 0u64, 0u64);
@@ -243,6 +256,14 @@ pub fn rules(world: &World, gist: &str, rules: &[Rule], delete: bool, all: bool)
         answer["free_before"] = json!(before);
         answer["free_after"] = json!(after);
         answer["freed_bytes"] = json!(i128::from(after) - i128::from(before));
+    }
+    if let Some(path) = only {
+        answer["path"] = json!(path);
+        if matched == 0 {
+            answer["why"] = json!(
+                "no Rule matches this path: its glob does not reach it, its marker is not beside it, or it is on another volume; `diskreap rule list` shows the globs"
+            );
+        }
     }
     answer["seconds"] = json!(seconds(start));
     Ok(answer)

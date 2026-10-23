@@ -1,4 +1,4 @@
-diskreap clean [--rule ID] [--all] — delete every Match nothing holds, each as it is found.
+diskreap clean [--rule ID] [--path P] [--all] — delete every Match nothing holds, each as it is found.
 
 WHEN   After plan, or whenever space is wanted back. It asks nothing.
 WHO    A person, or an agent a person asked to free space.
@@ -8,6 +8,9 @@ READS  As plan does. WRITES: deletes each Match whose verdict is delete, the
        symlink inside it. The open files are read again every 30 seconds.
 
   --rule ID   only this Rule
+  --path P    only P, and only when it is a Match of a Rule: its glob reaches
+              it and its marker is beside it. Nothing is walked but P, so
+              it is quick. P must be real: no symlink, `.` or `..` in it.
   --all       every Match, not only the ten largest of each Rule
 
 ANSWERS
