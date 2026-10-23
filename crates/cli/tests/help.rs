@@ -72,3 +72,24 @@ fn version_and_unknown_commands() {
     assert_eq!(out.code, 1);
     assert!(out.answer["error"].as_str().unwrap().contains("diskreap --help"));
 }
+
+#[test]
+fn every_example_rule_is_one_rule_check_takes() {
+    let env = Env::with_rules(serde_json::json!([]));
+    for args in [vec!["--help"], vec!["rule", "add", "--help"]] {
+        let help = env.run(&args).stdout;
+        let examples: Vec<&str> = help
+            .split_once("\nEXAMPLES\n")
+            .map(|(_, e)| e.lines().map(str::trim).filter(|l| l.starts_with('{')).collect())
+            .unwrap_or_default();
+        assert!(examples.len() >= 5, "{args:?} shows no examples");
+        for rule in examples {
+            let check = env.run(&["rule", "check", rule]);
+            assert_eq!(check.code, 0, "{rule}: {}", check.stdout);
+            assert_eq!(
+                check.answer["rule"]["id"],
+                serde_json::from_str::<serde_json::Value>(rule).unwrap()["id"]
+            );
+        }
+    }
+}

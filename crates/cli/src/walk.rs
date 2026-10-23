@@ -262,8 +262,20 @@ pub fn tree(path: &Path, uid: u32, dev: u64, cutoff: Option<i64>) -> Tree {
 }
 
 /// Deletes a Match: a symlink or a file by itself, a directory with all it
-/// holds (`remove_dir_all` does not follow symlinks inside it).
+/// holds (`remove_dir_all` does not follow symlinks inside it). On APFS, listing
+/// a large directory while its entries go can miss some, and the directory
+/// is then not empty at the end: it is gone over again, a few times, so a
+/// Match is not left half deleted.
 pub fn delete(path: &Path) -> std::io::Result<()> {
     let meta = std::fs::symlink_metadata(path)?;
-    if meta.is_dir() { std::fs::remove_dir_all(path) } else { std::fs::remove_file(path) }
+    if !meta.is_dir() {
+        return std::fs::remove_file(path);
+    }
+    let mut tries = 0;
+    loop {
+        match std::fs::remove_dir_all(path) {
+            Err(e) if e.kind() == std::io::ErrorKind::DirectoryNotEmpty && tries < 5 => tries += 1,
+            done => return done,
+        }
+    }
 }
