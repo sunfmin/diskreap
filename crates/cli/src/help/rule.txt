@@ -1,0 +1,10 @@
+diskreap rule list|check|add|set|rm — read and change the Rule list in the gist.
+
+  diskreap rule list                         the Rule list
+  diskreap rule check RULE [--all]           what RULE would match, not adding it
+  diskreap rule add RULE                     add RULE, after a person agreed
+  diskreap rule set ID --min-age AGE | --why TEXT
+  diskreap rule rm ID
+
+`diskreap rule <command> --help` says each one's answer; `diskreap --help`
+says how a Rule is written.

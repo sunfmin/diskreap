@@ -1,0 +1,15 @@
+diskreap init — make the private gist that keeps the Rule list.
+
+WHEN   Once, before anything else. Running it again changes nothing.
+WHO    A person, or an agent a person asked to set diskreap up.
+READS  Your gists, through gh. WRITES a new private gist holding
+       diskreap-rules.json with no Rules, when none of your gists holds it.
+
+ANSWERS
+  gist      the gist's id
+  created   true when this run made it
+  rules     how many Rules it holds
+  file      diskreap-rules.json
+
+TRIPS YOU UP
+  Two gists holding diskreap-rules.json is an error: delete one.

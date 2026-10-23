@@ -1,0 +1,15 @@
+diskreap rule set ID --min-age AGE | --why TEXT — change a Rule.
+
+WHO    A person, or an agent with that person's yes.
+READS  The gist. WRITES the changed Rule, when something changed.
+
+  --min-age AGE   30m, 12h, 1d, 2w
+  --why TEXT      why what it matches is safe to delete
+
+ANSWERS
+  gist      the gist's id
+  changed   false when the Rule already said this
+  rule      the Rule as it is now
+
+TRIPS YOU UP
+  To change a glob, marker or unless list: rule rm, then rule add.

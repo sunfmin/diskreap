@@ -1,0 +1,17 @@
+diskreap rule add RULE — add a Rule a person agreed to.
+
+WHEN   After rule check, once the person said yes. Never on your own.
+WHO    A person, or an agent with that person's yes.
+READS  The gist. WRITES the Rule at the end of the Rule list, unless the gist
+       changed since it was read (then it fails: run it again).
+
+  RULE    the Rule as JSON, or `-` to read it from stdin
+
+ANSWERS
+  gist     the gist's id
+  added    true when it was added; false when the same Rule is there already
+  rule     the Rule as written
+  plan     what plan answers for it now
+
+TRIPS YOU UP
+  A different Rule with the same id is an error: rule rm it, or pick another id.

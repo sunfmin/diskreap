@@ -1,0 +1,34 @@
+diskreap plan [--rule ID] [--all] — what clean would delete and hold, changing nothing.
+
+WHEN   Before clean, to see what it would do.
+WHO    Anyone.
+READS  The Rule list from the gist, every Match of each Rule and everything in
+       it, lsof, ps, git and the apps installed. WRITES nothing.
+
+  --rule ID   only this Rule
+  --all       every Match, not only the ten largest of each Rule
+
+ANSWERS
+  gist              the gist's id
+  rules             for each Rule id:
+    glob              its glob
+    matched           how many Matches it has
+    deletable, deletable_bytes   those clean would delete, and their size
+    held, held_bytes  those it would keep, and their size
+    holds             how many are held for each reason: floor, recent,
+                      in_use, running, installed, not_yours, unreadable,
+                      git_tracked, holds_repo, other_volume
+    largest           the ten largest Matches (matches, with --all): path,
+                      bytes, verdict (delete or hold), holds (why, in words)
+    seconds           how long its walk took
+    error             instead of the above, when its glob no longer compiles
+  matched, deletable, deletable_bytes   the totals
+  note              what the byte counts mean
+  seconds           how long the run took
+
+EVENTS (stderr, one JSON object a line, as they happen)
+  {"event":"start","rule":...}, then {"event":"match","rule","path","bytes",
+  "verdict","holds"?} for each Match, then {"event":"rule",...} when a Rule is done.
+
+TRIPS YOU UP
+  A Match held as recent may go on a later run: holds say when.

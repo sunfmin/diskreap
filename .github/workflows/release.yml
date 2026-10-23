@@ -1,0 +1,59 @@
+# A release: pushing the tag v<version> builds `diskreap` on stable Rust for
+# Apple Silicon and Intel macOS, makes this repository's release v<version>
+# of both archives and the Homebrew formula generated from them, and pushes
+# that formula to the tap (sunfmin/homebrew-tap). Every step is
+# `packaging/release.sh`, which is the release cut by hand as well (README,
+# "Cutting a release").
+#
+# The release is made with this repository's own token, which may write this
+# repository but not another. The tap is a second repository, so pushing the
+# formula to it takes the secret HOMEBREW_TAP_DEPLOY_KEY: an SSH deploy key
+# with write access to sunfmin/homebrew-tap. Without it the last step fails,
+# naming the line that pushes the formula by hand.
+
+name: release
+
+"on":
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: release
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal --target aarch64-apple-darwin,x86_64-apple-darwin
+          rustup default stable
+      - name: The tag is the version
+        run: packaging/release.sh check "$GITHUB_REF_NAME"
+      - name: Build
+        run: packaging/release.sh build
+      - name: Package
+        run: packaging/release.sh package
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: packaging/release.sh release
+      - name: Tap
+        env:
+          HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+        run: |
+          if [ -z "$HOMEBREW_TAP_DEPLOY_KEY" ]; then
+            echo "::error::No HOMEBREW_TAP_DEPLOY_KEY: the release is made, and its formula is not in sunfmin/homebrew-tap. Set the secret (an SSH deploy key that may write the tap) and run this workflow again, or push the formula by hand: packaging/release.sh build, package, then tap (README, Cutting a release)."
+            exit 1
+          fi
+          key="$(mktemp)"
+          printf '%s\n' "$HOMEBREW_TAP_DEPLOY_KEY" > "$key"
+          chmod 600 "$key"
+          git config --global user.name diskreap-release
+          git config --global user.email diskreap-release@users.noreply.github.com
+          HOMEBREW_TAP_SSH_KEY="$key" packaging/release.sh tap

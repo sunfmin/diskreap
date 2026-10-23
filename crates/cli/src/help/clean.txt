@@ -1,0 +1,27 @@
+diskreap clean [--rule ID] [--all] — delete every Match nothing holds, each as it is found.
+
+WHEN   After plan, or whenever space is wanted back. It asks nothing.
+WHO    A person, or an agent a person asked to free space.
+READS  As plan does. WRITES: deletes each Match whose verdict is delete, the
+       moment it is judged, while the walk goes on. A file or symlink is
+       removed by itself; a directory with all it holds, never following a
+       symlink inside it. The open files are read again every 30 seconds.
+
+  --rule ID   only this Rule
+  --all       every Match, not only the ten largest of each Rule
+
+ANSWERS
+  Everything plan answers, and:
+  rules.<id>.deleted, deleted_bytes   what was deleted for each Rule
+  rules.<id>.failed                   [{path, error}] that could not be
+  deleted, deleted_bytes, failed      the totals
+  free_before, free_after, freed_bytes   free space on the home volume,
+                                         measured before and after
+
+EVENTS (stderr) as plan's, with "event":"deleted" or "failed" for a Match
+that went or could not.
+
+TRIPS YOU UP
+  freed_bytes is what df measured; it is less than deleted_bytes when files
+  were APFS clones, and anything else writing at the time counts too.
+  Stopping it half way loses nothing: run it again and it finishes.
