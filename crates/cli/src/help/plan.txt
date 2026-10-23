@@ -6,9 +6,10 @@ READS  The Rule list from the gist, every Match of each Rule and everything in
        it, lsof, ps, git and the apps installed. WRITES nothing.
 
   --rule ID   only this Rule
-  --path P    only P, and only when it is a Match of a Rule: its glob reaches
-              it and its marker is beside it. Nothing is walked but P, so
-              it is quick. P must be real: no symlink, `.` or `..` in it.
+  --path P    only P, when it is a Match of a Rule: its glob reaches it and
+              its marker is beside it. Give it once for each path, or
+              `--path -` for paths a line each on stdin. Only these are
+              read, so it is quick. No symlink, `.` or `..` may lead to P.
   --all       every Match, not only the ten largest of each Rule
 
 ANSWERS
@@ -30,8 +31,9 @@ ANSWERS
     error             instead of the above, when its glob no longer compiles
   matched, deletable, deletable_bytes   the totals
   note              what the byte counts mean
-  path              with --path, the path judged
-  why               with --path, when no Rule matches it: why that can be
+  paths             with --path, the paths judged
+  unmatched         with --path, those no Rule matches
+  why               with --path, when some match no Rule: why that can be
   seconds           how long the run took
 
 EVENTS (stderr, one JSON object a line, as they happen)

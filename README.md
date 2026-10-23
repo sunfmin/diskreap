@@ -14,7 +14,7 @@ diskreap scan                       # large directories no Rule covers
 diskreap rule check '<rule>'        # what a Rule would match, adding nothing
 diskreap rule add '<rule>'          # add it, once a person agreed
 diskreap plan                       # what clean would delete and hold
-diskreap clean                      # delete each Match nothing holds, as it is found
+diskreap clean --path P ...         # delete the paths plan found, once looked over
 ```
 
 A Match goes only when nothing in it was changed or used (read: its access

@@ -63,21 +63,21 @@ enum Command {
         /// Only this Rule, by id
         #[arg(long)]
         rule: Option<String>,
-        /// Only this path, when it is a Match
+        /// Only these paths, those that are Matches; `-` reads them from stdin
         #[arg(long)]
-        path: Option<PathBuf>,
+        path: Vec<PathBuf>,
         /// Name every Match, not only the largest ten of each Rule
         #[arg(long)]
         all: bool,
     },
-    /// Delete every Match nothing holds, each as it is found
+    /// Delete the paths named that are Matches nothing holds
     Clean {
         /// Only this Rule, by id
         #[arg(long)]
         rule: Option<String>,
-        /// Only this path, when it is a Match
+        /// The paths to delete, from a reviewed plan; `-` reads them from stdin
         #[arg(long)]
-        path: Option<PathBuf>,
+        path: Vec<PathBuf>,
         /// Name every Match, not only the largest ten of each Rule
         #[arg(long)]
         all: bool,
@@ -211,11 +211,16 @@ fn init() -> Result<Value> {
 fn plan(
     world: &world::World,
     only: Option<&str>,
-    path: Option<PathBuf>,
+    path: Vec<PathBuf>,
     delete: bool,
     all: bool,
 ) -> Result<Value> {
-    let path = path.map(|p| real(&p)).transpose()?;
+    let path = paths(path)?;
+    if delete && path.is_empty() {
+        bail!(
+            "clean deletes only the paths it is given: run `diskreap plan --all`, look over every path it would delete and drop any that is not a build or a cache, then `diskreap clean --path <path>`... (or the paths a line each on stdin with `--path -`)"
+        );
+    }
     let (gist, rules) = gh::load(&world.places)?;
     let chosen: Vec<Rule> =
         match only {
@@ -227,20 +232,57 @@ fn plan(
     run::rules(world, &gist.id, &chosen, path, delete, all)
 }
 
+/// The paths named, `-` read as a path a line from stdin, each made real;
+/// every one that is not is named at once.
+fn paths(given: Vec<PathBuf>) -> Result<Vec<PathBuf>> {
+    let mut named = Vec::new();
+    for p in given {
+        if p == Path::new("-") {
+            let mut text = String::new();
+            std::io::stdin().read_to_string(&mut text)?;
+            named.extend(text.lines().map(str::trim).filter(|l| !l.is_empty()).map(PathBuf::from));
+        } else {
+            named.push(p);
+        }
+    }
+    let (mut real_paths, mut faults) = (Vec::new(), Vec::new());
+    for p in named {
+        match real(&p) {
+            Ok(r) => real_paths.push(r),
+            Err(e) => faults.push(e.to_string()),
+        }
+    }
+    if !faults.is_empty() {
+        bail!("{}", faults.join("; "));
+    }
+    real_paths.sort();
+    real_paths.dedup();
+    Ok(real_paths)
+}
+
 /// The path as it is on disk, refused when it is not there or is reached
-/// through a symlink or `.` or `..`: what is deleted is what was named.
+/// through a symlink or `.` or `..`: what is deleted is what was named. The
+/// path itself may be a symlink, a Match of its own: deleting it removes
+/// the link alone.
 fn real(path: &Path) -> Result<PathBuf> {
     let absolute = std::path::absolute(path)?;
-    let real = std::fs::canonicalize(&absolute).map_err(|e| {
+    let (Some(parent), Some(name)) = (absolute.parent(), absolute.file_name()) else {
+        bail!("{} names no entry in a directory: give the path of one", path.display());
+    };
+    let real_parent = std::fs::canonicalize(parent).map_err(|e| {
         anyhow!("{} cannot be read ({e}): give a path that is there", path.display())
     })?;
-    if real != absolute {
+    if real_parent != parent {
         bail!(
             "{} goes through a symlink or is written with `.` or `..`: give its real path, {}",
             path.display(),
-            real.display()
+            real_parent.join(name).display()
         );
     }
+    let real = real_parent.join(name);
+    std::fs::symlink_metadata(&real).map_err(|e| {
+        anyhow!("{} cannot be read ({e}): give a path that is there", path.display())
+    })?;
     Ok(real)
 }
 

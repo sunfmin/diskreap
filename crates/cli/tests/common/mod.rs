@@ -120,6 +120,26 @@ impl Env {
         Out { code: out.status.code().unwrap_or(-1), answer, events, stdout }
     }
 
+    /// `clean` as an agent runs it: `plan --all`, then `clean` with every path
+    /// the plan found; the plan's answer when it found none.
+    pub fn clean(&self) -> Out {
+        let plan = self.run(&["plan", "--all"]);
+        let paths: Vec<String> = plan
+            .events
+            .iter()
+            .filter(|e| e["event"] == "match")
+            .map(|e| e["path"].as_str().unwrap().to_string())
+            .collect();
+        if paths.is_empty() {
+            return plan;
+        }
+        let mut args = vec!["clean"];
+        for p in &paths {
+            args.extend(["--path", p.as_str()]);
+        }
+        self.run(&args)
+    }
+
     /// Runs with the clock moved on by LATER.
     pub fn later(&mut self) -> &mut Env {
         self.now = Some(now() + LATER);

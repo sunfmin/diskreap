@@ -41,7 +41,7 @@ fn an_old_cargo_target_goes_and_its_project_stays() {
     assert_eq!(plan.events.first().unwrap()["event"], "start");
     assert_eq!(plan.events.iter().filter(|e| e["event"] == "match").count(), 1);
 
-    let clean = env.run(&["clean"]);
+    let clean = env.clean();
     assert_eq!(clean.code, 0, "{}", clean.stdout);
     assert_eq!(clean.answer["deleted"], 1);
     assert_eq!(deleted_paths(&clean), [proj.join("target").to_string_lossy()]);
@@ -51,7 +51,7 @@ fn an_old_cargo_target_goes_and_its_project_stays() {
     assert!(clean.answer["free_before"].is_u64() && clean.answer["freed_bytes"].is_i64());
 
     // Run again: nothing left to do.
-    let again = env.run(&["clean"]);
+    let again = env.clean();
     assert_eq!(again.answer["matched"], 0);
 }
 
@@ -61,7 +61,7 @@ fn a_target_with_no_marker_is_not_a_match() {
     let precious = env.home.join("photos/target/me.jpg");
     file(&precious, "me");
     env.later();
-    let clean = env.run(&["clean"]);
+    let clean = env.clean();
     assert_eq!(clean.answer["matched"], 0);
     assert!(precious.exists());
 }
@@ -72,7 +72,7 @@ fn a_recent_change_anywhere_inside_holds_it() {
     let proj = env.home.join("dev/a");
     file(&proj.join("Cargo.toml"), "");
     file(&proj.join("target/deep/deeper/new.o"), "just built");
-    let clean = env.run(&["clean"]);
+    let clean = env.clean();
     assert_eq!(clean.answer["rules"]["cargo-target"]["holds"]["recent"], 1);
     assert!(holds_of(&clean, &proj.join("target"))[0].starts_with("changed or used too recently"));
     assert!(proj.join("target/deep/deeper/new.o").exists());
@@ -92,7 +92,7 @@ fn a_file_read_lately_holds_it_though_nothing_changed() {
     let f = std::fs::File::options().write(true).open(&used).unwrap();
     f.set_times(std::fs::FileTimes::new().set_accessed(read)).unwrap();
     drop(f);
-    let clean = env.run(&["clean"]);
+    let clean = env.clean();
     assert_eq!(clean.answer["rules"]["cargo-target"]["holds"]["recent"], 1, "{}", clean.stdout);
     assert!(holds_of(&clean, &proj.join("target"))[0].starts_with("changed or used too recently"));
     assert!(used.exists());
@@ -106,7 +106,7 @@ fn an_open_file_holds_it() {
     file(&proj.join("target/debug/server"), "running");
     env.set("open", json!([proj.join("target/debug/server")]));
     env.later();
-    let clean = env.run(&["clean"]);
+    let clean = env.clean();
     assert_eq!(clean.answer["rules"]["cargo-target"]["holds"]["in_use"], 1);
     assert!(proj.join("target/debug/server").exists());
 }
@@ -123,7 +123,7 @@ fn a_process_working_in_it_holds_it_and_a_similar_name_does_not() {
     // A process works in a/target; another holds `b/target2`, which is not in b/target.
     env.set("open", json!([a.join("target"), b.join("target2/y")]));
     env.later();
-    env.run(&["clean"]);
+    env.clean();
     assert!(a.join("target").exists());
     assert!(!b.join("target").exists());
 }
@@ -144,7 +144,7 @@ fn git_tracked_output_stays_and_ignored_output_goes() {
     git(&ignored, &["add", "."]);
     git(&ignored, &["commit", "-qm", "x"]);
     env.later();
-    let clean = env.run(&["clean"]);
+    let clean = env.clean();
     assert_eq!(clean.answer["rules"]["cargo-target"]["holds"]["git_tracked"], 1);
     assert!(tracked.join("target/out").exists());
     assert!(!ignored.join("target").exists());
@@ -162,7 +162,7 @@ fn a_file_forced_into_git_inside_an_ignored_dir_holds_it() {
     git(&repo, &["add", "-f", "target/keep.txt"]);
     git(&repo, &["commit", "-qm", "x"]);
     env.later();
-    env.run(&["clean"]);
+    env.clean();
     assert!(repo.join("target/keep.txt").exists());
 }
 
@@ -174,7 +174,7 @@ fn a_repository_inside_holds_it() {
     file(&proj.join("target/vendored/work.rs"), "unpushed");
     git(&proj.join("target/vendored"), &["init", "-q"]);
     env.later();
-    let clean = env.run(&["clean"]);
+    let clean = env.clean();
     assert_eq!(clean.answer["rules"]["cargo-target"]["holds"]["holds_repo"], 1);
     assert!(proj.join("target/vendored/work.rs").exists());
 }
@@ -196,7 +196,7 @@ fn a_symlink_match_goes_alone_and_symlinks_inside_are_not_followed() {
     file(&tmp.join("x"), "");
     std::os::unix::fs::symlink(&precious, tmp.join("link")).unwrap();
     env.later();
-    let clean = env.run(&["clean"]);
+    let clean = env.clean();
     assert_eq!(clean.code, 0, "{}", clean.stdout);
     assert!(!tmp.exists(), "{:?}", clean.events);
     assert!(std::fs::symlink_metadata(proj.join("target")).is_err());
@@ -229,7 +229,7 @@ fn the_floor_keeps_shallow_matches() {
     file(&env.home.join("Cargo.toml"), "");
     file(&env.home.join("target/x"), "");
     env.later();
-    let clean = env.run(&["clean"]);
+    let clean = env.clean();
     assert_eq!(clean.answer["rules"]["cargo-target"]["holds"]["floor"], 1);
     assert!(env.home.join("target/x").exists());
 }
@@ -243,7 +243,7 @@ fn any_depth_does_not_go_into_library_or_trash() {
         file(&proj.join("target/z"), "");
     }
     env.later();
-    let clean = env.run(&["clean"]);
+    let clean = env.clean();
     assert_eq!(clean.answer["matched"], 0);
     assert!(env.home.join("Library/x/target/z").exists());
 }
@@ -260,11 +260,11 @@ fn unless_running_holds_while_the_program_runs() {
     file(&clone.join("Google Chrome.app/Contents/Info.plist"), "");
     env.set("running", json!(["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"]));
     env.later();
-    let clean = env.run(&["clean"]);
+    let clean = env.clean();
     assert_eq!(clean.answer["rules"]["chrome-clone"]["holds"]["running"], 1);
     assert!(clone.exists());
     env.set("running", json!(["/usr/bin/login"]));
-    let clean = env.run(&["clean"]);
+    let clean = env.clean();
     assert_eq!(clean.answer["deleted"], 1);
     assert!(!clone.exists());
     assert!(env.var_folder.join("X/com.google.Chrome.code_sign_clone").exists());
@@ -282,16 +282,16 @@ fn unless_installed_holds_while_the_app_is_there() {
     file(&data.join("db"), "");
     std::fs::create_dir_all(env.home.join("Applications/Warp.app")).unwrap();
     env.later();
-    let clean = env.run(&["clean"]);
+    let clean = env.clean();
     assert_eq!(clean.answer["rules"]["orphan-warp"]["holds"]["installed"], 1);
     assert!(data.exists());
     // Gone from ~/Applications, but Spotlight still finds its bundle id.
     std::fs::remove_dir_all(env.home.join("Applications/Warp.app")).unwrap();
     env.set("bundles", json!(["dev.warp.Warp-Stable"]));
-    env.run(&["clean"]);
+    env.clean();
     assert!(data.exists());
     env.set("bundles", json!([]));
-    env.run(&["clean"]);
+    env.clean();
     assert!(!data.exists());
 }
 
@@ -304,7 +304,7 @@ fn clean_deletes_as_it_finds_and_names_each_in_turn() {
     }
     file(&env.tmpdir.join("other/f"), "x");
     env.later();
-    let clean = env.run(&["clean"]);
+    let clean = env.clean();
     let kinds: Vec<&str> = clean.events.iter().map(|e| e["event"].as_str().unwrap()).collect();
     assert_eq!(kinds, ["start", "deleted", "deleted", "deleted", "deleted", "deleted", "rule"]);
     assert!(env.tmpdir.join("other/f").exists());
@@ -337,7 +337,7 @@ fn lsof_failing_stops_the_run_before_anything_goes() {
     file(&env.tmpdir.join("bk-1/f"), "x");
     env.set("fail", json!({"lsof": "no"}));
     env.later();
-    let clean = env.run(&["clean"]);
+    let clean = env.clean();
     assert_eq!(clean.code, 1);
     assert!(clean.answer["error"].as_str().unwrap().contains("lsof"));
     assert!(env.tmpdir.join("bk-1/f").exists());
@@ -406,7 +406,8 @@ fn clean_with_a_path_deletes_that_match_alone() {
     assert_eq!(clean.code, 0, "{}", clean.stdout);
     assert_eq!(clean.answer["matched"], 1);
     assert_eq!(clean.answer["deleted"], 1);
-    assert_eq!(clean.answer["path"], *target.to_string_lossy());
+    assert_eq!(clean.answer["paths"], serde_json::json!([target]));
+    assert_eq!(clean.answer["unmatched"], serde_json::json!([]));
     assert!(!target.exists());
     assert!(b.join("target/debug/x").exists(), "another Match stays");
 }
@@ -488,9 +489,40 @@ fn what_tools_installed_in_hidden_directories_is_not_a_match() {
     file(&project.join("pnpm-lock.yaml"), "");
     file(&project.join("node_modules/x/index.js"), "");
     env.later();
-    let clean = env.run(&["clean", "--all"]);
+    let clean = env.clean();
     assert_eq!(clean.code, 0, "{}", clean.stdout);
     assert_eq!(deleted_paths(&clean), [project.join("node_modules").to_string_lossy()]);
     assert!(tool.join("node_modules/x/index.js").exists());
     assert!(unlocked.join("node_modules/x/index.js").exists());
+}
+
+#[test]
+fn clean_with_no_paths_deletes_nothing_and_says_how() {
+    let mut env = Env::with_rules(json!([cargo_target_rule()]));
+    let proj = env.home.join("dev/a");
+    file(&proj.join("Cargo.toml"), "");
+    file(&proj.join("target/debug/x"), "built");
+    env.later();
+    let clean = env.run(&["clean"]);
+    assert_ne!(clean.code, 0, "{}", clean.stdout);
+    assert!(clean.answer["error"].as_str().unwrap().contains("diskreap plan --all"));
+    assert!(proj.join("target/debug/x").exists());
+}
+
+#[test]
+fn clean_reads_the_reviewed_paths_from_stdin() {
+    let mut env = Env::with_rules(json!([cargo_target_rule()]));
+    let [a, b, c] = ["a", "b", "c"].map(|n| env.home.join("dev").join(n));
+    for p in [&a, &b, &c] {
+        file(&p.join("Cargo.toml"), "");
+        file(&p.join("target/debug/x"), "built");
+    }
+    env.later();
+    // The review kept b: only a and c are handed to clean.
+    let list = format!("{}\n\n{}\n", a.join("target").display(), c.join("target").display());
+    let clean = env.run_in(&["clean", "--path", "-"], Some(&list));
+    assert_eq!(clean.code, 0, "{}", clean.stdout);
+    assert_eq!(clean.answer["deleted"], 2);
+    assert!(!a.join("target").exists() && !c.join("target").exists());
+    assert!(b.join("target/debug/x").exists());
 }
