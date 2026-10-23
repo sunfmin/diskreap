@@ -43,11 +43,19 @@ fn gh(args: &[&str], input: Option<&str>) -> Result<String> {
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
-/// The ids of the user's gists that hold the Rule list.
+/// The ids of the user's gists that hold the Rule list: among the hundred
+/// updated last, and only when none is there among all of them, since
+/// listing every page takes seconds.
 pub fn find() -> Result<Vec<String>> {
     let jq = format!(".[] | select(.files[\"{FILE}\"]) | .id");
-    let out = gh(&["api", "--paginate", "/gists?per_page=100", "--jq", &jq], None)?;
-    Ok(out.lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from).collect())
+    let ids = |out: String| -> Vec<String> {
+        out.lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from).collect()
+    };
+    let recent = ids(gh(&["api", "/gists?per_page=100", "--jq", &jq], None)?);
+    if !recent.is_empty() {
+        return Ok(recent);
+    }
+    Ok(ids(gh(&["api", "--paginate", "/gists?per_page=100", "--jq", &jq], None)?))
 }
 
 /// The one gist that holds the Rule list.

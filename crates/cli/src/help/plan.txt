@@ -19,8 +19,11 @@ ANSWERS
                       in_use, running, installed, not_yours, unreadable,
                       git_tracked, holds_repo, other_volume
     largest           the ten largest Matches (matches, with --all): path,
-                      bytes, verdict (delete or hold), holds (why, in words)
-    seconds           how long its walk took
+                      bytes, verdict (delete or hold), holds (why, in words),
+                      bytes_at_least (true when a held Match was not read to
+                      the end: reading stops at the first thing that holds it)
+    seconds           how long its walk took; Rules that search any depth
+                      from the same place share one walk, and its time
     error             instead of the above, when its glob no longer compiles
   matched, deletable, deletable_bytes   the totals
   note              what the byte counts mean

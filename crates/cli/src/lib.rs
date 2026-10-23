@@ -13,6 +13,7 @@ use diskreap_rules::{FILE, Rule, parse_age, parse_list, parse_rule, rule_json};
 use serde_json::{Value, json};
 
 mod gh;
+mod par;
 mod run;
 mod scan;
 mod system;
