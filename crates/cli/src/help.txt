@@ -24,7 +24,11 @@ WHAT A RUN DOES
       never outside ~ and your own /var/folders entry; never a git repository
       or anything git tracks; never through a symlink or onto another volume;
       never another user's file. No Rule can change the floor.
-    - nothing anywhere in it changed within the Rule's min_age (default 1d);
+    - nothing anywhere in it was changed or used within the Rule's min_age
+      (default 1d): a file's last use is the newest of its writes and its
+      access time, a read counting as a day later than the access time says
+      (macOS moves it at most daily); where no access time can be read,
+      the writes alone;
     - no process holds a file in it open or works in it (lsof);
     - none of the Rule's unless_running programs runs, and none of its
       unless_installed apps is installed;

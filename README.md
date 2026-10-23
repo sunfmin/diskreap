@@ -17,7 +17,8 @@ diskreap plan                       # what clean would delete and hold
 diskreap clean                      # delete each Match nothing holds, as it is found
 ```
 
-A Match goes only when nothing in it changed within the Rule's min_age, no
+A Match goes only when nothing in it was changed or used (read: its access
+time, counted a day later) within the Rule's min_age, no
 process holds it open or works in it, its Rule's programs are not running and
 its apps not installed, and the floor lets it: never `~`, `~/Library` or what
 is directly in them, never outside `~` and your `/var/folders` entry, never a
