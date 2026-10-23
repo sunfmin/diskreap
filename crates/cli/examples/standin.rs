@@ -75,7 +75,8 @@ fn gh(args: &[String], state: &mut Value) -> (i32, String) {
     }
     match a.as_slice() {
         ["auth", "status"] => (0, String::new()),
-        ["api", "--paginate", "/gists?per_page=100", "--jq", _] => {
+        ["api", "--paginate", "/gists?per_page=100", "--jq", _]
+        | ["api", "/gists?per_page=100", "--jq", _] => {
             let ids: Vec<String> = state["gists"]
                 .as_object()
                 .unwrap()

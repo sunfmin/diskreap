@@ -74,5 +74,7 @@ OUTPUT
   Match, deletion and finding is printed as it happens, one JSON object a line
   on stderr ("event": "start", "match", "deleted", "failed", "rule", "large",
   "tmpdir", "orphan"), so a long run can be watched, and acted on, as it goes.
+  Walks run on several threads; Rules that search any depth from the same
+  place share one walk, so the events of several Rules come interleaved.
   Byte counts are allocated blocks: an APFS clone counts in each copy, so
   they can add up to more than clean frees. clean measures what it freed.

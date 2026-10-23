@@ -79,6 +79,7 @@ fn a_summary_counts_and_names_the_largest() {
         .map(|i| Judged {
             path: format!("/p/{i}"),
             bytes: i,
+            complete: true,
             verdict: if i % 2 == 0 { Verdict::Delete } else { Verdict::Hold(vec![Hold::InUse]) },
         })
         .collect();

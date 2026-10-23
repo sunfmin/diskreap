@@ -125,7 +125,7 @@ fn tmpdir(covered: &Covered) -> Vec<Value> {
             continue;
         }
         let name = entry.file_name().to_string_lossy().into_owned();
-        let bytes = walk::tree(&path, world.uid, world.dev).bytes;
+        let bytes = walk::tree(&path, world.uid, world.dev, None).bytes;
         let g = groups.entry(group(&name).to_string()).or_default();
         g.0 += 1;
         g.1 = g.1.saturating_add(bytes);
@@ -163,7 +163,7 @@ fn orphans(covered: &Covered) -> Result<Vec<Value>> {
         {
             continue;
         }
-        let bytes = walk::tree(&path, world.uid, world.dev).bytes;
+        let bytes = walk::tree(&path, world.uid, world.dev, None).bytes;
         if bytes < ORPHAN_MIN {
             continue;
         }

@@ -336,3 +336,38 @@ fn every_byte_count_is_a_number() {
     assert!(plan.answer["note"].is_string());
     let _: &Value = &plan.answer["seconds"];
 }
+
+#[test]
+fn rules_searching_from_the_same_place_share_a_walk_and_each_finds_its_own() {
+    let mut env = Env::with_rules(json!([
+        cargo_target_rule(),
+        {"id": "node-modules", "glob": "~/**/node_modules", "marker": "package.json", "why": "npm installs it again"},
+        {"id": "bk", "glob": "$TMPDIR/bk-*", "why": "test leftovers"}
+    ]));
+    let rust = env.home.join("dev/rust");
+    let web = env.home.join("dev/web");
+    file(&rust.join("Cargo.toml"), "");
+    file(&rust.join("target/x"), "");
+    file(&web.join("package.json"), "");
+    file(&web.join("node_modules/left-pad/index.js"), "");
+    // node_modules inside a target is not looked for: the target is a Match.
+    file(&rust.join("target/package.json"), "");
+    file(&rust.join("target/node_modules/y"), "");
+    file(&env.tmpdir.join("bk-1/f"), "");
+    env.later();
+    let plan = env.run(&["plan", "--all"]);
+    let paths = |id: &str| -> Vec<String> {
+        plan.answer["rules"][id]["matches"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["path"].as_str().unwrap().to_string())
+            .collect()
+    };
+    assert_eq!(paths("cargo-target"), [rust.join("target").to_string_lossy()]);
+    assert_eq!(paths("node-modules"), [web.join("node_modules").to_string_lossy()]);
+    assert_eq!(paths("bk").len(), 1);
+    let starts = plan.events.iter().filter(|e| e["event"] == "start").count();
+    let ends = plan.events.iter().filter(|e| e["event"] == "rule").count();
+    assert_eq!((starts, ends), (3, 3));
+}

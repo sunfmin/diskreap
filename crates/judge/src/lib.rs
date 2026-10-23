@@ -201,6 +201,8 @@ pub fn judge(facts: &Facts, min_age: Age, now: i64, places: &Places) -> Verdict 
 pub struct Judged {
     pub path: String,
     pub bytes: u64,
+    /// Whether `bytes` counts all of it; a walk stops early at the first Hold.
+    pub complete: bool,
     pub verdict: Verdict,
 }
 
@@ -209,6 +211,9 @@ pub fn judged_json(j: &Judged) -> Value {
     let mut object = Map::new();
     object.insert("path".into(), Value::String(j.path.clone()));
     object.insert("bytes".into(), Value::from(j.bytes));
+    if !j.complete {
+        object.insert("bytes_at_least".into(), Value::Bool(true));
+    }
     match &j.verdict {
         Verdict::Delete => {
             object.insert("verdict".into(), Value::from("delete"));

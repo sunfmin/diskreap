@@ -1,12 +1,14 @@
 //! Judging each Rule's Matches as they are found — and, for `clean`,
 //! deleting each one that goes right then — with an event on stderr for each.
+//! Rules that search any depth from the same directory share one walk.
 
 use std::io::Write;
+use std::path::PathBuf;
 use std::time::Instant;
 
 use anyhow::Result;
-use diskreap_judge::{Facts, Judged, Verdict, judge, judged_json, summary};
-use diskreap_rules::{Rule, compile, floor};
+use diskreap_judge::{Facts, Git, Judged, Verdict, judge, judged_json, summary};
+use diskreap_rules::{Glob, Rule, compile, floor};
 use serde_json::{Value, json};
 
 use crate::system::{self, Apps, Open};
@@ -20,6 +22,10 @@ pub fn event(value: Value) {
     let _ = err.flush();
 }
 
+fn seconds(start: Instant) -> f64 {
+    (start.elapsed().as_secs_f64() * 100.0).round() / 100.0
+}
+
 /// What a run reads at most once: the open files (read again when stale),
 /// the programs running and the apps installed.
 pub struct Run<'a> {
@@ -31,74 +37,109 @@ pub struct Run<'a> {
     apps: Option<Apps>,
 }
 
+/// One Rule's part of a run.
+struct Lane<'r> {
+    rule: &'r Rule,
+    glob: Result<Glob, String>,
+    running: Vec<String>,
+    installed: Vec<String>,
+    /// Anything changed after this is within the Minimum age.
+    cutoff: i64,
+    judged: Vec<Judged>,
+    deleted: u64,
+    deleted_bytes: u64,
+    failed: Vec<Value>,
+}
+
 impl<'a> Run<'a> {
     pub fn new(world: &'a World, delete: bool, all: bool) -> Run<'a> {
         Run { world, delete, all, open: None, programs: None, apps: None }
     }
 
-    fn open(&mut self) -> Result<&Open> {
-        match &mut self.open {
-            Some(open) => open.fresh()?,
-            None => self.open = Some(Open::read()?),
-        }
-        Ok(self.open.as_ref().expect("read above"))
+    /// One Rule's run.
+    pub fn rule(&mut self, rule: &Rule) -> Result<Value> {
+        let mut answers = self.rules(std::slice::from_ref(rule))?;
+        Ok(answers.pop().map(|(_, a)| a).unwrap_or_default())
     }
 
-    /// One Rule's run: every Match judged as it is found, and gone at once
-    /// when deleting and nothing holds it.
-    pub fn rule(&mut self, rule: &Rule) -> Result<Value> {
-        let start = Instant::now();
+    fn lane<'r>(&mut self, rule: &'r Rule) -> Result<Lane<'r>> {
         let world = self.world;
-        let places = &world.places;
-        let glob = match compile(&rule.glob, places) {
-            Ok(g) => g,
-            Err(fault) => return Ok(json!({"glob": rule.glob, "error": fault})),
-        };
-        let running: Vec<String> = if rule.unless_running.is_empty() {
+        let running = if rule.unless_running.is_empty() {
             Vec::new()
         } else {
-            let programs = match &self.programs {
-                Some(p) => p.clone(),
-                None => {
-                    let p = system::running()?;
-                    self.programs = Some(p.clone());
-                    p
-                }
-            };
+            if self.programs.is_none() {
+                self.programs = Some(system::running()?);
+            }
+            let programs = self.programs.as_deref().unwrap_or_default();
             rule.unless_running
                 .iter()
-                .filter(|n| system::is_running(&programs, n))
+                .filter(|n| system::is_running(programs, n))
                 .cloned()
                 .collect()
         };
-        let installed: Vec<String> = if rule.unless_installed.is_empty() {
+        let installed = if rule.unless_installed.is_empty() {
             Vec::new()
         } else {
-            let apps = self.apps.get_or_insert_with(|| Apps::read(&places.home));
+            let apps = self.apps.get_or_insert_with(|| Apps::read(&world.places.home));
             rule.unless_installed.iter().filter(|n| apps.installed(n)).cloned().collect()
         };
-        let (uid, dev, now) = (self.world.uid, self.world.dev, self.world.now);
-        let mut judged: Vec<Judged> = Vec::new();
-        let mut deleted: u64 = 0;
-        let mut deleted_bytes: u64 = 0;
-        let mut failed: Vec<Value> = Vec::new();
+        let age = i64::try_from(rule.min_age.secs()).unwrap_or(i64::MAX);
+        Ok(Lane {
+            rule,
+            glob: compile(&rule.glob, &world.places),
+            running,
+            installed,
+            cutoff: world.now.saturating_sub(age),
+            judged: Vec::new(),
+            deleted: 0,
+            deleted_bytes: 0,
+            failed: Vec::new(),
+        })
+    }
+
+    /// Several Rules' runs, sharing walks: every Match judged as it is found,
+    /// and gone at once when deleting and nothing holds it. Each Rule's
+    /// answer, in the order given.
+    pub fn rules(&mut self, rules: &[Rule]) -> Result<Vec<(String, Value)>> {
+        let start = Instant::now();
+        let world = self.world;
+        let places = &world.places;
+        let mut lanes = Vec::new();
+        for rule in rules {
+            event(json!({"event": "start", "rule": rule.id, "glob": rule.glob}));
+            lanes.push(self.lane(rule)?);
+        }
+        let owned: Vec<(usize, Glob, Option<&str>)> = lanes
+            .iter()
+            .enumerate()
+            .filter_map(|(i, l)| l.glob.clone().ok().map(|g| (i, g, l.rule.marker.as_deref())))
+            .collect();
+        let globs: Vec<walk::Wanted> = owned.iter().map(|(i, g, m)| (*i, g, *m)).collect();
+        let (uid, dev, now, delete) = (world.uid, world.dev, world.now, self.delete);
+        let mut open = self.open.take();
         let mut fault: Option<anyhow::Error> = None;
-        let mut found = |path: std::path::PathBuf| {
+        let mut found = |i: usize, path: PathBuf| {
             if fault.is_some() {
                 return;
             }
+            let lane = &mut lanes[i];
             let text = path.to_string_lossy().into_owned();
-            let tree = walk::tree(&path, uid, dev);
+            let tree = walk::tree(&path, uid, dev, Some(lane.cutoff));
             // Only a Match the floor lets be judged is worth asking git and lsof about.
             let judged_at_all = floor(&text, places).is_none();
-            let in_use = judged_at_all
-                && match self.open() {
-                    Ok(open) => open.holds(&text),
-                    Err(e) => {
-                        fault = Some(e);
-                        return;
-                    }
+            let in_use = if judged_at_all {
+                let read = match open.as_mut() {
+                    Some(o) => o.fresh(),
+                    None => Open::read().map(|o| open = Some(o)),
                 };
+                if let Err(e) = read {
+                    fault = Some(e);
+                    return;
+                }
+                open.as_ref().is_some_and(|o| o.holds(&text))
+            } else {
+                false
+            };
             let facts = Facts {
                 path: text.clone(),
                 bytes: tree.bytes,
@@ -108,53 +149,65 @@ impl<'a> Run<'a> {
                 holds_repo: tree.holds_repo,
                 other_volume: tree.other_volume,
                 in_use,
-                git: if judged_at_all { system::git(&path) } else { diskreap_judge::Git::Outside },
-                running: running.clone(),
-                installed: installed.clone(),
+                git: if judged_at_all { system::git(&path) } else { Git::Outside },
+                running: lane.running.clone(),
+                installed: lane.installed.clone(),
             };
-            let verdict = judge(&facts, rule.min_age, now, places);
-            let one = Judged { path: text.clone(), bytes: tree.bytes, verdict };
+            let verdict = judge(&facts, lane.rule.min_age, now, places);
+            let one =
+                Judged { path: text.clone(), bytes: tree.bytes, complete: tree.complete, verdict };
             let mut said = judged_json(&one);
             said["event"] = json!("match");
-            said["rule"] = json!(rule.id);
-            if self.delete && one.verdict == Verdict::Delete {
+            said["rule"] = json!(lane.rule.id);
+            // A walk cut short found a Hold; it never deletes, whatever the Verdict.
+            if delete && one.verdict == Verdict::Delete && tree.complete {
                 match walk::delete(&path) {
                     Ok(()) => {
-                        deleted = deleted.saturating_add(1);
-                        deleted_bytes = deleted_bytes.saturating_add(tree.bytes);
+                        lane.deleted = lane.deleted.saturating_add(1);
+                        lane.deleted_bytes = lane.deleted_bytes.saturating_add(tree.bytes);
                         said["event"] = json!("deleted");
                     }
                     Err(e) => {
-                        let f = json!({"path": text, "error": e.to_string()});
-                        failed.push(f);
+                        lane.failed.push(json!({"path": text, "error": e.to_string()}));
                         said["event"] = json!("failed");
                         said["error"] = json!(e.to_string());
                     }
                 }
             }
             event(said);
-            judged.push(one);
+            lane.judged.push(one);
         };
-        walk::matches(&glob, rule.marker.as_deref(), places, dev, &mut found);
+        walk::matches(&globs, places, dev, &mut found);
+        self.open = open;
         if let Some(e) = fault {
             return Err(e);
         }
-        let mut answer = summary(&judged, self.all);
-        answer["glob"] = json!(rule.glob);
-        answer["seconds"] = json!((start.elapsed().as_secs_f64() * 100.0).round() / 100.0);
-        if self.delete {
-            answer["deleted"] = json!(deleted);
-            answer["deleted_bytes"] = json!(deleted_bytes);
-            answer["failed"] = json!(failed);
-        }
-        event(
-            json!({"event": "rule", "rule": rule.id, "matched": answer["matched"], "deletable": answer["deletable"], "seconds": answer["seconds"]}),
-        );
-        Ok(answer)
+        let took = seconds(start);
+        Ok(lanes
+            .into_iter()
+            .map(|lane| {
+                let answer = match &lane.glob {
+                    Err(fault) => json!({"glob": lane.rule.glob, "error": fault}),
+                    Ok(_) => {
+                        let mut a = summary(&lane.judged, self.all);
+                        a["glob"] = json!(lane.rule.glob);
+                        a["seconds"] = json!(took);
+                        if self.delete {
+                            a["deleted"] = json!(lane.deleted);
+                            a["deleted_bytes"] = json!(lane.deleted_bytes);
+                            a["failed"] = json!(lane.failed);
+                        }
+                        a
+                    }
+                };
+                event(json!({"event": "rule", "rule": lane.rule.id, "matched": answer["matched"], "deletable": answer["deletable"], "seconds": took}));
+                (lane.rule.id.clone(), answer)
+            })
+            .collect())
     }
 }
 
-/// `plan` and `clean`: every Rule, or the one named, run in turn.
+/// `plan` and `clean`: every Rule, or the one named.
 pub fn rules(world: &World, gist: &str, rules: &[Rule], delete: bool, all: bool) -> Result<Value> {
     let start = Instant::now();
     let free_before = if delete { Some(system::free(&world.places.home)?) } else { None };
@@ -163,9 +216,7 @@ pub fn rules(world: &World, gist: &str, rules: &[Rule], delete: bool, all: bool)
     let (mut matched, mut deletable, mut deletable_bytes, mut deleted, mut deleted_bytes) =
         (0u64, 0u64, 0u64, 0u64, 0u64);
     let mut failed = Vec::new();
-    for rule in rules {
-        event(json!({"event": "start", "rule": rule.id, "glob": rule.glob}));
-        let answer = run.rule(rule)?;
+    for (id, answer) in run.rules(rules)? {
         matched += answer["matched"].as_u64().unwrap_or(0);
         deletable += answer["deletable"].as_u64().unwrap_or(0);
         deletable_bytes += answer["deletable_bytes"].as_u64().unwrap_or(0);
@@ -174,7 +225,7 @@ pub fn rules(world: &World, gist: &str, rules: &[Rule], delete: bool, all: bool)
         if let Some(f) = answer["failed"].as_array() {
             failed.extend(f.iter().cloned());
         }
-        per.insert(rule.id.clone(), answer);
+        per.insert(id, answer);
     }
     let mut answer = json!({
         "gist": gist,
@@ -182,7 +233,7 @@ pub fn rules(world: &World, gist: &str, rules: &[Rule], delete: bool, all: bool)
         "matched": matched,
         "deletable": deletable,
         "deletable_bytes": deletable_bytes,
-        "note": "bytes are allocated blocks: a file APFS cloned counts once in each copy, so they can add up to more than is freed",
+        "note": "bytes are allocated blocks: a file APFS cloned counts once in each copy, so they can add up to more than is freed; a held Match with bytes_at_least was not read to the end",
     });
     if let Some(before) = free_before {
         let after = system::free(&world.places.home)?;
@@ -193,6 +244,6 @@ pub fn rules(world: &World, gist: &str, rules: &[Rule], delete: bool, all: bool)
         answer["free_after"] = json!(after);
         answer["freed_bytes"] = json!(i128::from(after) - i128::from(before));
     }
-    answer["seconds"] = json!((start.elapsed().as_secs_f64() * 100.0).round() / 100.0);
+    answer["seconds"] = json!(seconds(start));
     Ok(answer)
 }
