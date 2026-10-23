@@ -180,23 +180,21 @@ fn command(command: Command) -> Result<Value> {
 }
 
 fn init() -> Result<Value> {
-    let ids = gh::find()?;
-    match ids.as_slice() {
-        [] => {
-            let id = gh::create()?;
-            Ok(json!({"gist": id, "created": true, "rules": 0, "file": FILE}))
-        }
-        [id] => {
-            let gist = gh::read(id)?;
+    let cache = gh::cache().map(|p| p.to_string_lossy().into_owned());
+    match gh::open() {
+        Ok(gist) => {
             let count = serde_json::from_str::<Value>(&gist.text)
                 .ok()
                 .and_then(|v| v["rules"].as_array().map(Vec::len));
-            Ok(json!({"gist": id, "created": false, "rules": count, "file": FILE}))
+            Ok(
+                json!({"gist": gist.id, "created": false, "rules": count, "file": FILE, "cache": cache}),
+            )
         }
-        _ => bail!(
-            "several gists hold {FILE} ({}): keep one, delete the others with `gh gist delete <id>`",
-            ids.join(", ")
-        ),
+        Err(_) if gh::find()?.is_empty() => {
+            let id = gh::create()?;
+            Ok(json!({"gist": id, "created": true, "rules": 0, "file": FILE, "cache": cache}))
+        }
+        Err(e) => Err(e),
     }
 }
 
@@ -325,8 +323,8 @@ fn doctor(world: &world::World) -> Value {
     let gh_good = gh_ok.is_ok();
     check("gh", gh_ok.map(|_| "logged in".into()), "brew install gh, then gh auth login");
     if gh_good {
-        let gist = gh::the_gist().map_err(|e| e.to_string()).and_then(|id| {
-            let g = gh::read(&id).map_err(|e| e.to_string())?;
+        let gist = gh::open().map_err(|e| e.to_string()).and_then(|g| {
+            let id = &g.id;
             parse_list(&g.text, &world.places)
                 .map(|rules| format!("gist {id} holds {} Rules", rules.len()))
                 .map_err(|f| format!("the Rule list in the gist {id} is wrong: {}", f.join("; ")))

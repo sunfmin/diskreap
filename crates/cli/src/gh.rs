@@ -2,6 +2,7 @@
 //! that builds a `gh` command line.
 
 use std::io::Write;
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use anyhow::{Result, anyhow, bail};
@@ -58,8 +59,36 @@ pub fn find() -> Result<Vec<String>> {
     Ok(ids(gh(&["api", "--paginate", "/gists?per_page=100", "--jq", &jq], None)?))
 }
 
-/// The one gist that holds the Rule list.
-pub fn the_gist() -> Result<String> {
+/// Where the id of the gist found last is kept, so a run need not list
+/// every gist: `~/.config/diskreap/gist`. It is only a shortcut; a gist it
+/// names that is gone or holds no Rule list is looked for again.
+pub fn cache() -> Option<PathBuf> {
+    std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config/diskreap/gist"))
+}
+
+fn remember(id: &str) {
+    if let Some(path) = cache() {
+        let _ = path.parent().map(std::fs::create_dir_all);
+        let _ = std::fs::write(path, format!("{id}\n"));
+    }
+}
+
+/// The gist holding the Rule list, as it is now: the one the cache names
+/// when it still holds the list, or else the one found among your gists.
+pub fn open() -> Result<Gist> {
+    let cached = cache().and_then(|p| std::fs::read_to_string(p).ok());
+    if let Some(id) = cached.as_deref().map(str::trim).filter(|id| !id.is_empty())
+        && let Ok(gist) = read(id)
+    {
+        return Ok(gist);
+    }
+    let gist = read(&the_gist()?)?;
+    remember(&gist.id);
+    Ok(gist)
+}
+
+/// The one gist that holds the Rule list, looked for among all of yours.
+fn the_gist() -> Result<String> {
     let ids = find()?;
     match ids.as_slice() {
         [id] => Ok(id.clone()),
@@ -97,11 +126,12 @@ pub fn create() -> Result<String> {
         .as_str()
         .map(String::from)
         .ok_or_else(|| anyhow!("gh made a gist and did not say its id: run `diskreap init` again"))
+        .inspect(|id| remember(id))
 }
 
 /// The Rule list as the gist holds it now.
 pub fn load(places: &Places) -> Result<(Gist, Vec<Rule>)> {
-    let gist = read(&the_gist()?)?;
+    let gist = open()?;
     let rules = parse_list(&gist.text, places).map_err(|faults| {
         anyhow!("the Rule list in the gist {} is wrong: {}", gist.id, faults.join("; "))
     })?;
