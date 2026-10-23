@@ -25,7 +25,7 @@ mod world;
 pub const VERSION: &str = env!("DISKREAP_VERSION");
 
 /// The guide `--help` prints, and the one screen `-h` prints.
-pub const GUIDE: &str = include_str!("help.txt");
+pub const GUIDE: &str = concat!(include_str!("help.txt"), "\n", include_str!("help/examples.txt"));
 pub const SCREEN: &str = include_str!("short.txt");
 
 /// Each subcommand's help, by the words that name it.
@@ -37,7 +37,10 @@ pub const HELP: [(&str, &str); 10] = [
     ("scan", include_str!("help/scan.txt")),
     ("rule list", include_str!("help/rule-list.txt")),
     ("rule check", include_str!("help/rule-check.txt")),
-    ("rule add", include_str!("help/rule-add.txt")),
+    (
+        "rule add",
+        concat!(include_str!("help/rule-add.txt"), "\n", include_str!("help/examples.txt")),
+    ),
     ("rule set", include_str!("help/rule-set.txt")),
     ("rule rm", include_str!("help/rule-rm.txt")),
 ];
