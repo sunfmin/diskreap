@@ -11,8 +11,8 @@ use diskreap_rules::{Glob, Places, Segment, name_matches, path_matches, reached,
 
 use crate::par;
 
-/// A glob to find, with the marker its Matches need, by its place in the run.
-pub type Wanted<'a> = (usize, &'a Glob, Option<&'a str>);
+/// A glob to find, with the markers (one of which) its Matches need, by its place in the run.
+pub type Wanted<'a> = (usize, &'a Glob, &'a [String]);
 
 /// Hands each path a glob matches that has its marker beside it to `found`,
 /// with the glob's place, as soon as it is found and on this thread, not
@@ -103,8 +103,9 @@ impl Find<'_> {
         self.wanted[0].1
     }
 
-    fn marked(marker: Option<&str>, path: &Path) -> bool {
-        marker.is_none_or(|m| path.parent().is_some_and(|p| p.join(m).exists()))
+    fn marked(marker: &[String], path: &Path) -> bool {
+        marker.is_empty()
+            || path.parent().is_some_and(|p| marker.iter().any(|m| p.join(m).exists()))
     }
 
     fn skipped(&self, path: &Path) -> bool {
@@ -148,7 +149,7 @@ impl Find<'_> {
         par::walk(
             dir,
             &stop,
-            |path, meta| {
+            |path, entry| {
                 let text = path.to_string_lossy();
                 let mut matched = false;
                 for &(i, glob, marker) in &self.wanted {
@@ -157,7 +158,11 @@ impl Find<'_> {
                         matched = true;
                     }
                 }
-                !matched && meta.is_dir() && meta.dev() == self.dev && !self.skipped(path)
+                // Only a directory to go into is stat-ed, for its volume.
+                !matched
+                    && entry.file_type().is_ok_and(|t| t.is_dir())
+                    && !self.skipped(path)
+                    && entry.metadata().is_ok_and(|m| m.dev() == self.dev)
             },
             |_| {},
         );
@@ -248,7 +253,14 @@ pub fn tree(path: &Path, uid: u32, dev: u64, cutoff: Option<i64>) -> Tree {
         meta.is_dir()
     };
     if see(path, &root) && !stop.load(Ordering::Relaxed) {
-        par::walk(path, &stop, see, |_| held(&unreadable));
+        let each = |path: &Path, entry: &std::fs::DirEntry| match entry.metadata() {
+            Ok(meta) => see(path, &meta),
+            Err(_) => {
+                held(&unreadable);
+                false
+            }
+        };
+        par::walk(path, &stop, each, |_| held(&unreadable));
     }
     Tree {
         bytes: bytes.into_inner(),

@@ -14,6 +14,6 @@
 
 **Scan**: a look for large directories no Rule covers, reported as candidates for new Rules; it deletes nothing and adds no Rule.
 
-**Marker**: a file that must sit beside a Match for it to count, proving what made it — `Cargo.toml` beside `target`, `package.json` beside `node_modules`. A Rule that searches any depth needs one.
+**Marker**: a file that must sit beside a Match for it to count, proving a project made it — `Cargo.toml` beside `target`, a lockfile beside `node_modules`. A Rule may name several, of which one must be there. A Rule that searches any depth needs one.
 
 **Minimum age**: how long nothing anywhere inside a Match may have been changed or used before it may go. Set per Rule.

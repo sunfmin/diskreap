@@ -1,24 +1,26 @@
 //! Walking a directory tree on several threads: stat-ing is what a walk
 //! waits on, and the disk answers many at once.
 
-use std::fs::Metadata;
+use std::fs::DirEntry;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Condvar, Mutex};
 
 /// How many threads a walk uses.
 pub fn threads() -> usize {
-    std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).clamp(2, 16)
+    std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).clamp(2, 8)
 }
 
-/// Calls `visit` with every entry under `root` (not `root` itself), its
-/// metadata read without following a symlink, on several threads at once.
-/// `visit` answers whether to go into the entry when it is a directory.
+/// Calls `visit` with every entry under `root` (not `root` itself), on several
+/// threads at once. `visit` answers whether to go into the entry when it is a
+/// directory (a symlink is not one). Reading an entry's metadata is `visit`'s
+/// to do, and only when it needs it: the type comes with the listing, and a
+/// stat of every file is most of a walk's time.
 /// `unreadable` is called for a directory that cannot be listed. The walk
 /// ends early once `stop` is set.
 pub fn walk<V, U>(root: &Path, stop: &AtomicBool, visit: V, unreadable: U)
 where
-    V: Fn(&Path, &Metadata) -> bool + Sync,
+    V: Fn(&Path, &DirEntry) -> bool + Sync,
     U: Fn(&Path) + Sync,
 {
     // The directories still to list, and how many threads are listing one.
@@ -58,11 +60,11 @@ where
                                     continue;
                                 };
                                 let path = entry.path();
-                                let Ok(meta) = std::fs::symlink_metadata(&path) else {
+                                let Ok(kind) = entry.file_type() else {
                                     unreadable(&path);
                                     continue;
                                 };
-                                if visit(&path, &meta) && meta.is_dir() {
+                                if visit(&path, &entry) && kind.is_dir() {
                                     found.push(path);
                                 }
                             }

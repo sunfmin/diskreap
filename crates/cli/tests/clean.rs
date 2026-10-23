@@ -470,3 +470,27 @@ fn a_path_is_held_as_a_walk_would_hold_it() {
     assert_eq!(clean.answer["rules"]["cargo-target"]["holds"]["recent"], 1);
     assert!(target.exists());
 }
+
+#[test]
+fn what_tools_installed_in_hidden_directories_is_not_a_match() {
+    let rule = json!({"id": "node-modules", "glob": "~/**/node_modules",
+        "marker": ["package-lock.json", "pnpm-lock.yaml"], "why": "installed again"});
+    let mut env = Env::with_rules(json!([rule]));
+    let tool = env.home.join(".pi/agent/install/releases/1.2.0");
+    file(&tool.join("package.json"), "{}");
+    file(&tool.join("package-lock.json"), "{}");
+    file(&tool.join("node_modules/x/index.js"), "");
+    let unlocked = env.home.join("dev/published-package");
+    file(&unlocked.join("package.json"), "{}");
+    file(&unlocked.join("node_modules/x/index.js"), "");
+    let project = env.home.join("dev/app");
+    file(&project.join("package.json"), "{}");
+    file(&project.join("pnpm-lock.yaml"), "");
+    file(&project.join("node_modules/x/index.js"), "");
+    env.later();
+    let clean = env.run(&["clean", "--all"]);
+    assert_eq!(clean.code, 0, "{}", clean.stdout);
+    assert_eq!(deleted_paths(&clean), [project.join("node_modules").to_string_lossy()]);
+    assert!(tool.join("node_modules/x/index.js").exists());
+    assert!(unlocked.join("node_modules/x/index.js").exists());
+}

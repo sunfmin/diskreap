@@ -8,7 +8,7 @@ EXAMPLES
   {"id":"go-build-cache","glob":"~/Library/Caches/go-build","min_age":"1d","why":"the Go build cache; go fills it again"}
   {"id":"homebrew-cache","glob":"~/Library/Caches/Homebrew/*","min_age":"1d","why":"downloads brew already installed; brew fetches them again if needed"}
   {"id":"cargo-target","glob":"~/**/target","marker":"Cargo.toml","min_age":"1d","why":"cargo builds it again"}
-  {"id":"node-modules","glob":"~/**/node_modules","marker":"package.json","min_age":"1d","why":"the package manager installs it again"}
+  {"id":"node-modules","glob":"~/**/node_modules","marker":["package-lock.json","pnpm-lock.yaml","yarn.lock","bun.lock","bun.lockb"],"min_age":"1d","why":"the package manager installs it again"}
   {"id":"python-venv","glob":"~/**/.venv","marker":"pyproject.toml","min_age":"1d","why":"uv sync makes it again"}
   {"id":"swiftpm-build","glob":"~/**/.build","marker":"Package.swift","min_age":"1d","why":"SwiftPM builds it again from Package.swift"}
-  {"id":"next-build","glob":"~/**/.next","marker":"package.json","min_age":"1d","why":"next build / next dev builds it again"}
+  {"id":"next-build","glob":"~/**/.next","marker":["next.config.js","next.config.mjs","next.config.ts"],"min_age":"1d","why":"next build / next dev builds it again"}
