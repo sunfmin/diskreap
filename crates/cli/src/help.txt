@@ -50,10 +50,17 @@ COMMANDS
     diskreap rule set ID --min-age AGE | --why TEXT
     diskreap rule rm ID
   Deleting:
-    diskreap clean [--rule ID] [--path P] [--all]
-                                    deletes each Match nothing holds, at once
+    diskreap clean --path P... [--rule ID]
+                                    deletes the paths named that may go
 
   `diskreap <command> --help` says what a command answers, every key.
+
+THE WAY TO CLEAN
+  1. diskreap plan --all lists every Match and its verdict, as it walks.
+  2. Read every path it would delete; drop any that is not a project's build
+     or a cache (see `diskreap clean --help`), and say which and why.
+  3. diskreap clean --path <path> for each one left, or the paths a line
+     each on stdin with --path -. Each is judged again as it goes.
 
 THE WAY TO ADD A RULE
   1. diskreap scan, or look yourself, to find what takes space.

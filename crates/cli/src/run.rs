@@ -32,8 +32,10 @@ pub struct Run<'a> {
     pub world: &'a World,
     pub delete: bool,
     pub all: bool,
-    /// The one path to judge, in place of walking for every Match.
-    pub only: Option<PathBuf>,
+    /// The paths to judge, in place of walking for every Match; none to walk.
+    pub only: Vec<PathBuf>,
+    /// Those of `only` no Rule matches.
+    pub unmatched: Vec<PathBuf>,
     open: Option<Open>,
     programs: Option<Vec<String>>,
     apps: Option<Apps>,
@@ -55,7 +57,16 @@ struct Lane<'r> {
 
 impl<'a> Run<'a> {
     pub fn new(world: &'a World, delete: bool, all: bool) -> Run<'a> {
-        Run { world, delete, all, only: None, open: None, programs: None, apps: None }
+        Run {
+            world,
+            delete,
+            all,
+            only: Vec::new(),
+            unmatched: Vec::new(),
+            open: None,
+            programs: None,
+            apps: None,
+        }
     }
 
     /// One Rule's run.
@@ -179,9 +190,18 @@ impl<'a> Run<'a> {
             event(said);
             lane.judged.push(one);
         };
-        match self.only.clone() {
-            Some(path) => walk::at(&globs, places, dev, &path, &mut found),
-            None => walk::matches(&globs, places, dev, &mut found),
+        if self.only.is_empty() {
+            walk::matches(&globs, places, dev, &mut found);
+        }
+        for path in &self.only {
+            let mut hit = false;
+            walk::at(&globs, places, dev, path, &mut |i, p| {
+                hit = true;
+                found(i, p);
+            });
+            if !hit {
+                self.unmatched.push(path.clone());
+            }
         }
         self.open = open;
         if let Some(e) = fault {
@@ -217,7 +237,7 @@ pub fn rules(
     world: &World,
     gist: &str,
     rules: &[Rule],
-    only: Option<PathBuf>,
+    only: Vec<PathBuf>,
     delete: bool,
     all: bool,
 ) -> Result<Value> {
@@ -257,11 +277,12 @@ pub fn rules(
         answer["free_after"] = json!(after);
         answer["freed_bytes"] = json!(i128::from(after) - i128::from(before));
     }
-    if let Some(path) = only {
-        answer["path"] = json!(path);
-        if matched == 0 {
+    if !only.is_empty() {
+        answer["paths"] = json!(only);
+        answer["unmatched"] = json!(run.unmatched);
+        if !run.unmatched.is_empty() {
             answer["why"] = json!(
-                "no Rule matches this path: its glob does not reach it, its marker is not beside it, or it is on another volume; `diskreap rule list` shows the globs"
+                "no Rule matches the unmatched paths: its glob does not reach them, its marker is not beside them, or they are on another volume; `diskreap rule list` shows the globs"
             );
         }
     }

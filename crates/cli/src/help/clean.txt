@@ -1,20 +1,22 @@
-diskreap clean [--rule ID] [--path P] [--all] — delete every Match nothing holds, each as it is found.
+diskreap clean --path P... [--rule ID] [--all] — delete the paths named that are Matches nothing holds.
 
-WHEN   After plan, or whenever space is wanted back. It asks nothing.
+WHEN   After plan, once every path it would delete was looked over.
 WHO    A person, or an agent a person asked to free space.
-READS  As plan does. WRITES: deletes each Match whose verdict is delete, the
-       moment it is judged, while the walk goes on. A file or symlink is
+READS  As plan does, for the paths named only. WRITES: deletes each path
+       named that is a Match whose verdict is delete, the moment it is judged. A file or symlink is
        removed by itself; a directory with all it holds, never following a
        symlink inside it. The open files are read again every 30 seconds.
 
+  --path P    a path to delete, when it is a Match of a Rule: its glob reaches
+              it and its marker is beside it. Give it once for each path, or
+              `--path -` for paths a line each on stdin. Needed: clean
+              deletes nothing it was not given. Only these are read, so it
+              is quick. No symlink, `.` or `..` may lead to P.
   --rule ID   only this Rule
-  --path P    only P, and only when it is a Match of a Rule: its glob reaches
-              it and its marker is beside it. Nothing is walked but P, so
-              it is quick. P must be real: no symlink, `.` or `..` in it.
   --all       every Match, not only the ten largest of each Rule
 
 ANSWERS
-  Everything plan answers, and:
+  Everything plan answers (paths, unmatched, why too), and:
   rules.<id>.deleted, deleted_bytes   what was deleted for each Rule
   rules.<id>.failed                   [{path, error}] that could not be
   deleted, deleted_bytes, failed      the totals
@@ -28,3 +30,11 @@ TRIPS YOU UP
   freed_bytes is what df measured; it is less than deleted_bytes when files
   were APFS clones, and anything else writing at the time counts too.
   Stopping it half way loses nothing: run it again and it finishes.
+
+LOOK BEFORE IT GOES
+  A Rule can match more than it meant to. Before clean, read every path plan
+  would delete and drop any that is not a build or a cache a project makes:
+  an installed program (releases/, versions/, extensions/, lib/node_modules
+  of a tool, inside site-packages or an .app), anything in a hidden or
+  Library directory, a person's own work. Tell the person what you dropped
+  and why; if one Rule keeps matching such paths, propose fixing the Rule.
