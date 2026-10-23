@@ -391,3 +391,82 @@ fn rules_searching_from_the_same_place_share_a_walk_and_each_finds_its_own() {
     let ends = plan.events.iter().filter(|e| e["event"] == "rule").count();
     assert_eq!((starts, ends), (3, 3));
 }
+
+#[test]
+fn clean_with_a_path_deletes_that_match_alone() {
+    let mut env = Env::with_rules(json!([cargo_target_rule()]));
+    let [a, b] = ["a", "b"].map(|n| env.home.join("dev").join(n));
+    for p in [&a, &b] {
+        file(&p.join("Cargo.toml"), "");
+        file(&p.join("target/debug/x"), "built");
+    }
+    env.later();
+    let target = a.join("target");
+    let clean = env.run(&["clean", "--path", target.to_str().unwrap()]);
+    assert_eq!(clean.code, 0, "{}", clean.stdout);
+    assert_eq!(clean.answer["matched"], 1);
+    assert_eq!(clean.answer["deleted"], 1);
+    assert_eq!(clean.answer["path"], *target.to_string_lossy());
+    assert!(!target.exists());
+    assert!(b.join("target/debug/x").exists(), "another Match stays");
+}
+
+#[test]
+fn a_path_no_rule_matches_is_kept_and_says_why() {
+    let mut env = Env::with_rules(json!([cargo_target_rule()]));
+    let proj = env.home.join("dev/a");
+    file(&proj.join("Cargo.toml"), "");
+    file(&proj.join("src/main.rs"), "fn main() {}");
+    file(&proj.join("target/debug/x"), "built");
+    let unmarked = env.home.join("photos/target");
+    file(&unmarked.join("me.jpg"), "me");
+    let hidden = env.home.join("Library/x/target");
+    file(&env.home.join("Library/x/Cargo.toml"), "");
+    file(&hidden.join("debug/x"), "built");
+    env.later();
+    for path in [
+        proj.join("src"),
+        proj.clone(),
+        proj.join("target/debug"),
+        unmarked.clone(),
+        hidden.clone(),
+    ] {
+        let clean = env.run(&["clean", "--path", path.to_str().unwrap()]);
+        assert_eq!(clean.code, 0, "{}", clean.stdout);
+        assert_eq!(clean.answer["matched"], 0, "{}", path.display());
+        assert!(clean.answer["why"].as_str().unwrap().starts_with("no Rule matches"));
+        assert!(path.exists(), "{}", path.display());
+    }
+}
+
+#[test]
+fn a_path_through_a_symlink_or_dots_is_refused() {
+    let mut env = Env::with_rules(json!([cargo_target_rule()]));
+    let proj = env.home.join("dev/a");
+    file(&proj.join("Cargo.toml"), "");
+    file(&proj.join("target/debug/x"), "built");
+    std::os::unix::fs::symlink(&proj, env.home.join("link")).unwrap();
+    env.later();
+    for path in
+        [env.home.join("link/target"), proj.join("src/../target"), env.home.join("dev/a/gone")]
+    {
+        let clean = env.run(&["clean", "--path", path.to_str().unwrap()]);
+        assert_ne!(clean.code, 0, "{}", clean.stdout);
+        assert!(clean.answer["error"].is_string());
+    }
+    assert!(proj.join("target/debug/x").exists());
+}
+
+#[test]
+fn a_path_is_held_as_a_walk_would_hold_it() {
+    let env = Env::with_rules(json!([cargo_target_rule()]));
+    let proj = env.home.join("dev/a");
+    file(&proj.join("Cargo.toml"), "");
+    file(&proj.join("target/debug/x"), "just built");
+    let target = proj.join("target");
+    let clean = env.run(&["clean", "--path", target.to_str().unwrap()]);
+    assert_eq!(clean.answer["matched"], 1);
+    assert_eq!(clean.answer["deleted"], 0);
+    assert_eq!(clean.answer["rules"]["cargo-target"]["holds"]["recent"], 1);
+    assert!(target.exists());
+}

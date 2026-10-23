@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
 use std::sync::{Mutex, mpsc};
 
-use diskreap_rules::{Glob, Places, Segment, name_matches, path_matches, skipped};
+use diskreap_rules::{Glob, Places, Segment, name_matches, path_matches, reached, skipped};
 
 use crate::par;
 
@@ -56,6 +56,37 @@ pub fn matches(globs: &[Wanted], places: &Places, dev: u64, found: &mut dyn FnMu
             found(i, path);
         }
     });
+}
+
+/// Hands `path` to `found` once for each glob a walk would find it as a Match
+/// of: the glob reaches it, its marker is beside it, and every directory
+/// from the glob's base down to it is on the home volume. `path` is real:
+/// no symlink and no `.` or `..` in it.
+pub fn at(
+    globs: &[Wanted],
+    places: &Places,
+    dev: u64,
+    path: &Path,
+    found: &mut dyn FnMut(usize, PathBuf),
+) {
+    let text = path.to_string_lossy();
+    for &(i, glob, marker) in globs {
+        let base = Path::new(&glob.base);
+        if !std::fs::canonicalize(base).is_ok_and(|r| r == base)
+            || !reached(glob, &text, places)
+            || !Find::marked(marker, path)
+        {
+            continue;
+        }
+        let on_volume = path
+            .ancestors()
+            .skip(1)
+            .take_while(|d| d.starts_with(base))
+            .all(|d| std::fs::symlink_metadata(d).is_ok_and(|m| m.dev() == dev));
+        if on_volume {
+            found(i, path.to_path_buf());
+        }
+    }
 }
 
 /// One walk: the globs it looks for, all with the same base.

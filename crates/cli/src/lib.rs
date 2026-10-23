@@ -5,6 +5,7 @@
 
 use std::ffi::OsString;
 use std::io::Read;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use anyhow::{Result, anyhow, bail};
@@ -59,6 +60,9 @@ enum Command {
         /// Only this Rule, by id
         #[arg(long)]
         rule: Option<String>,
+        /// Only this path, when it is a Match
+        #[arg(long)]
+        path: Option<PathBuf>,
         /// Name every Match, not only the largest ten of each Rule
         #[arg(long)]
         all: bool,
@@ -68,6 +72,9 @@ enum Command {
         /// Only this Rule, by id
         #[arg(long)]
         rule: Option<String>,
+        /// Only this path, when it is a Match
+        #[arg(long)]
+        path: Option<PathBuf>,
         /// Name every Match, not only the largest ten of each Rule
         #[arg(long)]
         all: bool,
@@ -169,8 +176,8 @@ fn command(command: Command) -> Result<Value> {
     match command {
         Command::Init => init(),
         Command::Doctor => Ok(doctor(&world)),
-        Command::Plan { rule, all } => plan(&world, rule.as_deref(), false, all),
-        Command::Clean { rule, all } => plan(&world, rule.as_deref(), true, all),
+        Command::Plan { rule, path, all } => plan(&world, rule.as_deref(), path, false, all),
+        Command::Clean { rule, path, all } => plan(&world, rule.as_deref(), path, true, all),
         Command::Scan => {
             let (gist, rules) = gh::load(&world.places)?;
             scan::scan(&world, &gist.id, &rules)
@@ -198,7 +205,14 @@ fn init() -> Result<Value> {
     }
 }
 
-fn plan(world: &world::World, only: Option<&str>, delete: bool, all: bool) -> Result<Value> {
+fn plan(
+    world: &world::World,
+    only: Option<&str>,
+    path: Option<PathBuf>,
+    delete: bool,
+    all: bool,
+) -> Result<Value> {
+    let path = path.map(|p| real(&p)).transpose()?;
     let (gist, rules) = gh::load(&world.places)?;
     let chosen: Vec<Rule> =
         match only {
@@ -207,7 +221,24 @@ fn plan(world: &world::World, only: Option<&str>, delete: bool, all: bool) -> Re
                 anyhow!("no Rule has the id `{id}`: the ids are {}", ids(&rules))
             })?],
         };
-    run::rules(world, &gist.id, &chosen, delete, all)
+    run::rules(world, &gist.id, &chosen, path, delete, all)
+}
+
+/// The path as it is on disk, refused when it is not there or is reached
+/// through a symlink or `.` or `..`: what is deleted is what was named.
+fn real(path: &Path) -> Result<PathBuf> {
+    let absolute = std::path::absolute(path)?;
+    let real = std::fs::canonicalize(&absolute).map_err(|e| {
+        anyhow!("{} cannot be read ({e}): give a path that is there", path.display())
+    })?;
+    if real != absolute {
+        bail!(
+            "{} goes through a symlink or is written with `.` or `..`: give its real path, {}",
+            path.display(),
+            real.display()
+        );
+    }
+    Ok(real)
 }
 
 fn ids(rules: &[Rule]) -> String {

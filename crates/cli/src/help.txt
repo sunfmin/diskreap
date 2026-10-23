@@ -38,7 +38,7 @@ WHAT A RUN DOES
 COMMANDS
   For anyone, changing nothing:
     diskreap doctor                 checks what diskreap needs
-    diskreap plan [--rule ID] [--all]
+    diskreap plan [--rule ID] [--path P] [--all]
                                     what clean would delete and hold
     diskreap scan                   large directories no Rule covers
     diskreap rule list              the Rule list
@@ -49,7 +49,7 @@ COMMANDS
     diskreap rule set ID --min-age AGE | --why TEXT
     diskreap rule rm ID
   Deleting:
-    diskreap clean [--rule ID] [--all]
+    diskreap clean [--rule ID] [--path P] [--all]
                                     deletes each Match nothing holds, at once
 
   `diskreap <command> --help` says what a command answers, every key.

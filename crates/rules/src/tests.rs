@@ -139,6 +139,23 @@ fn any_depth_skips_library_trash_and_git() {
     assert!(!skipped("/Users/me", "Library", &lib, &p));
 }
 
+#[test]
+fn a_walk_reaches_a_match_only_through_directories_it_goes_into() {
+    let p = places();
+    let home = compile("~/**/node_modules", &p).unwrap();
+    assert!(reached(&home, "/Users/me/dev/a/node_modules", &p));
+    assert!(!reached(&home, "/Users/me/dev/a/node_modules/x", &p));
+    assert!(!reached(&home, "/Users/me/Library/x/node_modules", &p));
+    assert!(!reached(&home, "/Users/me/.Trash/node_modules", &p));
+    assert!(!reached(&home, "/Users/me/dev/.git/x/node_modules", &p));
+    assert!(!reached(&home, "/Users/other/node_modules", &p));
+    let lib = compile("~/Library/Developer/**/DerivedData", &p).unwrap();
+    assert!(reached(&lib, "/Users/me/Library/Developer/Xcode/DerivedData", &p));
+    let tmp = compile("$TMPDIR/go-build*", &p).unwrap();
+    assert!(reached(&tmp, "/var/folders/ab/cd/T/go-build123", &p));
+    assert!(!reached(&tmp, "/var/folders/ab/cd/T/x/go-build123", &p));
+}
+
 proptest! {
     // A name with no wildcard matches only itself, and `*` matches every name.
     #[test]

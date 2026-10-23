@@ -539,6 +539,26 @@ pub fn skipped(dir: &str, name: &str, glob: &Glob, places: &Places) -> bool {
     below(&child, &glob.base).is_none()
 }
 
+/// Whether a walk for a glob reaches `path` as a Match: the path matches it,
+/// and no directory between the glob's base and the path is one the walk does
+/// not go into.
+pub fn reached(glob: &Glob, path: &str, places: &Places) -> bool {
+    if !path_matches(glob, path) {
+        return false;
+    }
+    let Some(rest) = below(&glob.base, path) else { return false };
+    let names: Vec<&str> = rest.split('/').collect();
+    let Some((_, between)) = names.split_last() else { return true };
+    let mut dir = glob.base.clone();
+    for name in between {
+        if skipped(&dir, name, glob, places) {
+            return false;
+        }
+        dir = format!("{dir}/{name}");
+    }
+    true
+}
+
 #[cfg(test)]
 mod tests;
 
