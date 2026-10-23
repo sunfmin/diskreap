@@ -134,3 +134,43 @@ fn doctor_names_each_finding() {
     assert_eq!(out.answer["ok"], true, "{}", out.stdout);
     assert_eq!(out.answer["places"]["$TMPDIR"], env.tmpdir.to_string_lossy().as_ref());
 }
+
+fn listings(env: &Env) -> usize {
+    env.state()["calls"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|c| {
+            c.as_array()
+                .unwrap()
+                .iter()
+                .any(|a| a.as_str().is_some_and(|a| a.starts_with("/gists?")))
+        })
+        .count()
+}
+
+#[test]
+fn the_gist_found_once_is_remembered_and_looked_for_again_when_gone() {
+    let env = Env::new();
+    let init = env.run(&["init"]);
+    let cache = env.home.join(".config/diskreap/gist");
+    let id = init.answer["gist"].as_str().unwrap();
+    assert_eq!(std::fs::read_to_string(&cache).unwrap().trim(), id);
+    let before = listings(&env);
+    env.run(&["rule", "list"]);
+    env.run(&["plan"]);
+    assert_eq!(listings(&env), before, "a remembered gist is read, not looked for");
+
+    // The cache names a gist that is gone: it is looked for, and remembered anew.
+    std::fs::write(&cache, "deadbeef\n").unwrap();
+    let list = env.run(&["rule", "list"]);
+    assert_eq!(list.code, 0, "{}", list.stdout);
+    assert_eq!(list.answer["gist"], id);
+    assert_eq!(std::fs::read_to_string(&cache).unwrap().trim(), id);
+    assert!(listings(&env) > before);
+
+    // No cache at all is the same as a first run.
+    std::fs::remove_file(&cache).unwrap();
+    assert_eq!(env.run(&["init"]).answer["created"], false);
+    assert!(cache.exists());
+}

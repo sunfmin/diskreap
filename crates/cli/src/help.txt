@@ -15,6 +15,9 @@ RUN FIRST
   diskreap doctor     what is missing, each with its fix
   diskreap init       makes the gist when there is none
 
+  The gist's id is remembered in ~/.config/diskreap/gist so a run need not
+  list every gist; it is only a shortcut, looked for again when it is gone.
+
 WHAT A RUN DOES
   Each Rule's glob is walked. A Match goes only when every check passes:
     - the floor: never `/`, `~`, `~/Library` or anything directly in either;
