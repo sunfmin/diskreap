@@ -11,7 +11,7 @@ use std::process::ExitCode;
 use agent_help::Help;
 use anyhow::{Result, anyhow, bail};
 use clap::FromArgMatches;
-use diskreap_rules::{FILE, Rule, parse_age, parse_list, parse_rule, rule_json};
+use diskreap_rules::{FILE, Root, Rule, parse_age, parse_list, parse_rule, rule_json};
 use serde_json::{Value, json};
 
 mod cli;
@@ -342,10 +342,9 @@ fn doctor(world: &world::World) -> Value {
     json!({
         "ok": ok,
         "findings": findings,
-        "places": {
-            "~": world.places.home,
-            "$TMPDIR": world.places.tmpdir,
-            "$VARFOLDER": world.places.var_folder,
-        },
+        "places": Root::ALL
+            .into_iter()
+            .map(|root| (root.name().to_string(), json!(world.places.of(root))))
+            .collect::<serde_json::Map<_, _>>(),
     })
 }

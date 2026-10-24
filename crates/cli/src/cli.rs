@@ -6,7 +6,7 @@ use std::ffi::OsString;
 
 use agent_help::{Help, Topic};
 use clap::{CommandFactory, Parser, Subcommand};
-use diskreap_rules::{FILE, ONE_DAY, age_text};
+use diskreap_rules::{AgeUnit, FILE, ONE_DAY, Root, age_text, listed};
 
 use crate::run::Event;
 use crate::{VERSION, gh, scan, system, walk};
@@ -78,7 +78,7 @@ pub enum Command {
     ///
     /// - `ok`: true when every check passed.
     /// - `findings`: each check: `check`, `ok`, `says`, and `fix` when it failed.
-    /// - `places`: what `~`, `$TMPDIR` and `$VARFOLDER` stand for on this machine.
+    /// - `places`: what {const:ROOT_NAMES} stand for on this machine.
     ///
     /// **Trips you up**: it always exits 0: read `ok`.
     #[command(verbatim_doc_comment, next_help_heading = ANYONE)]
@@ -229,7 +229,7 @@ pub enum RuleCommand {
     /// - `same_as_listed`: whether that Rule is this one.
     /// - `plan`: what `plan` answers for one Rule (see `diskreap plan --help`).
     ///
-    /// **Trips you up**: a Rule with a fault is an error naming every fault: a glob not starting at `~/`, `$TMPDIR/` or `$VARFOLDER/`, one that can only reach what the floor keeps, `**` with no marker, an unknown key, a bad `min_age`.
+    /// **Trips you up**: a Rule with a fault is an error naming every fault: a glob not starting at {const:ROOTS}, one that can only reach what the floor keeps, `**` with no marker, an unknown key, a bad `min_age`.
     #[command(verbatim_doc_comment)]
     Check {
         rule: String,
@@ -260,7 +260,7 @@ pub enum RuleCommand {
     ///
     /// **Reads** the gist. **Writes** the changed Rule, when something changed.
     ///
-    /// - `--min-age AGE`: `30m`, `12h`, `1d`, `2w`.
+    /// - `--min-age AGE`: a whole number then {const:AGE_UNITS}, like `{const:MIN_AGE}`.
     /// - `--why TEXT`: why what it matches is safe to delete.
     ///
     /// **Answers**:
@@ -335,11 +335,11 @@ pub struct RuleExamples;
 enum RuleKey {
     /// Needed. A short name: lowercase letters, digits and `-`, starting with a letter.
     Id,
-    /// Needed. Starts at `~/`, `$TMPDIR/` or `$VARFOLDER/` (your `/var/folders` entry, where `$TMPDIR` is its `T`); `*` and `?` in a name, `**` for any depth of directories, which does not go into `~/Library` or any hidden directory (`.name`: where tools keep what they installed) unless the glob starts inside it, nor ever into `.git`; a hidden directory can still be a Match itself (`.venv`).
+    /// Needed. Starts at {const:ROOT_PLACES}; `*` and `?` in a name, `**` for any depth of directories, which does not go into `~/Library` or any hidden directory (`.name`: where tools keep what they installed) unless the glob starts inside it, nor ever into `.git`; a hidden directory can still be a Match itself (`.venv`).
     Glob,
     /// A file that must sit beside a Match, or a list of files of which one must; needed with `**`. Pick a file only a project has, not an installed copy: a lockfile beside `node_modules`, not `package.json`, which every installed package has too.
     Marker,
-    /// How long nothing in a Match may have been changed or used: `30m`, `12h`, `1d`, `2w`; default `{const:MIN_AGE}`.
+    /// How long nothing in a Match may have been changed or used: a whole number then {const:AGE_UNITS}; default `{const:MIN_AGE}`.
     MinAge,
     /// Programs: while one runs, nothing goes.
     UnlessRunning,
@@ -358,6 +358,8 @@ pub fn manual() -> Help {
     };
     let names =
         |names: &[&str]| names.iter().map(|n| format!("`{n}`")).collect::<Vec<_>>().join(", ");
+    let roots = |text: fn(Root) -> String| Root::ALL.map(text);
+    let units = AgeUnit::ALL.map(|u| format!("`{}` ({})", u.letter(), u.name()));
     Help::new(Cli::command())
         .topic::<WritingARule>()
         .topic::<RuleExamples>()
@@ -369,6 +371,13 @@ pub fn manual() -> Help {
         .constant("READ_LAG", format!("{}d", walk::READ_LAG / 86_400))
         .constant("HOLDS", names(&diskreap_judge::HOLD_KEYS))
         .constant("RULE_KEYS", names(&diskreap_rules::KEYS))
+        .constant("ROOTS", listed(&roots(|r| format!("`{}/`", r.name())), "or"))
+        .constant(
+            "ROOT_PLACES",
+            listed(&roots(|r| format!("`{}/` ({})", r.name(), r.what())), "or"),
+        )
+        .constant("ROOT_NAMES", listed(&roots(|r| format!("`{}`", r.name())), "and"))
+        .constant("AGE_UNITS", listed(&units, "or"))
         .constant("LARGEST", diskreap_judge::LARGEST)
         .constant("OPEN_FRESH", system::OPEN_FRESH.as_secs())
         .constant("SHOWN", scan::SHOWN)

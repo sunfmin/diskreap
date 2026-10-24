@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use anyhow::Result;
 use diskreap_judge::group;
-use diskreap_rules::{Glob, Rule, compile, path_matches};
+use diskreap_rules::{Glob, Root, Rule, compile, path_matches};
 use serde_json::{Value, json};
 
 use crate::run::{Event, event};
@@ -136,7 +136,7 @@ fn tmpdir(covered: &Covered) -> Vec<Value> {
     out.into_iter()
         .take(SHOWN)
         .map(|(prefix, entries, bytes)| {
-            let v = json!({"group": prefix, "glob": format!("$TMPDIR/{prefix}*"), "entries": entries, "bytes": bytes});
+            let v = json!({"group": prefix, "glob": format!("{}/{prefix}*", Root::Tmpdir.name()), "entries": entries, "bytes": bytes});
             event(Event::Tmpdir, json!({"group": prefix, "entries": entries, "bytes": bytes}));
             v
         })
