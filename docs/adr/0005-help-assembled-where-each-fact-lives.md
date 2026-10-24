@@ -1,0 +1,7 @@
+# The manual is assembled from where each fact lives
+
+`--help` was a text file and each command's help another, glued to the commands by a hand-kept list, with the numbers and names it quotes (the ten largest, the Hold kinds, the event names) copied into prose. Nothing kept a copy in step with the code: a renamed Hold or a new event left the help saying the old one.
+
+So the manual is assembled by `agent_help::Help`, the library every agent-cli tool uses: a command's help is its clap doc comment, written as Markdown with each paragraph on one line; clap's command tree is the list of commands, each in a group naming who runs it; a piece that belongs to no command is a topic (`diskreap help <topic>`); a code set the help lists is a table (the events are the `Event` enum the code writes them from) and a number or name list is a constant read from the code that uses it. `agent_help::check` fails on a command without text, a link or placeholder naming nothing, or a command in no group. `-h` alone stays one screen, clap's own summary of the same tree.
+
+Considered: keeping the text files and testing them against the code. Each test would have to know what the prose quotes, which is the copy again. Accepted cost: `agent-help` is a git dependency of the binary crate, pinned by `Cargo.lock`; the pure crates stay free of it, and a key list the help explains in a pure crate (`diskreap_rules::KEYS`) is held equal to its table by a test.

@@ -1,0 +1,24 @@
+[package]
+name = "diskreap-rules"
+description = "The Rule list: parsing, checking and writing it, globs and the floor no Rule passes. Pure, checked by Flux"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+flux-rs.workspace = true
+flux-core.workspace = true
+flux-alloc.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+# `cargo flux` (through ../../verify.sh) checks every refinement in this crate.
+[package.metadata.flux]
+enabled = true
+check_overflow = "strict"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(flux)'] }

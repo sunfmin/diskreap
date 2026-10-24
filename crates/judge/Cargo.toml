@@ -1,0 +1,25 @@
+[package]
+name = "diskreap-judge"
+description = "Whether a Match goes or is held, and a run's summary of each Rule. Pure, checked by Flux"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+flux-rs.workspace = true
+flux-core.workspace = true
+flux-alloc.workspace = true
+diskreap-rules = { path = "../rules" }
+serde_json.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+# `cargo flux` (through ../../verify.sh) checks every refinement in this crate.
+[package.metadata.flux]
+enabled = true
+check_overflow = "strict"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(flux)'] }

@@ -1,0 +1,7 @@
+# A `**` does not go into hidden directories
+
+The first full clean deleted the `node_modules` of programs installed under the home directory: pi in `~/.pi/agent/install/releases/1.2.0`, minimax-code, editor extensions, Codex's runtime, a package inside a `.venv`. Each had a `package.json` beside it, which is all the Rule asked for, and none comes back by itself. Every one of them was inside a hidden directory, where tools keep what they installed; a person's projects are not.
+
+So a `**` does not go into a directory whose name starts with `.`, unless the glob starts inside it (`~/.cache/**/x` goes into `~/.cache`). A hidden directory can still be a Match itself (`~/**/.venv`, `~/**/.next`): only what is inside it is not looked at. Markers may also be a list of which one must be there, so a Rule can ask for what only a project has — a lockfile beside `node_modules` — rather than what every installed package has.
+
+Considered: telling installed copies from projects by path words (`releases/`, `versions/`, `extensions/`): too many to list and easy to miss one. Leaving it to the Rule's marker alone: one careless marker deletes programs again. Accepted cost: a project kept inside a hidden directory is not cleaned by a `**` Rule; a Rule that starts inside that directory still can. It also makes a walk of the home directory about three times faster, since tools' hidden directories hold a third of its directories.
