@@ -1,0 +1,4 @@
+# The limit for one test, which ./gate.sh runs the tests under: a test still
+# running after 120 seconds is ended and fails as TIMEOUT, by name.
+[profile.default]
+slow-timeout = { period = "30s", terminate-after = 4 }
