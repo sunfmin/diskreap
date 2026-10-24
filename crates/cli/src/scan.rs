@@ -11,7 +11,7 @@ use diskreap_judge::group;
 use diskreap_rules::{Glob, Rule, compile, path_matches};
 use serde_json::{Value, json};
 
-use crate::run::event;
+use crate::run::{Event, event};
 use crate::system::{self, Apps};
 use crate::walk;
 use crate::world::World;
@@ -68,13 +68,13 @@ impl Covered<'_> {
 pub fn scan(world: &World, gist: &str, rules: &[Rule]) -> Result<Value> {
     let start = Instant::now();
     let covered = Covered::new(world, rules);
-    event(json!({"event": "start", "scan": "large"}));
+    event(Event::Start, json!({"scan": "large"}));
     let mut large = Vec::new();
     sizes(Path::new(&world.places.home), &covered, &mut large);
     large.sort_by_key(|l: &(String, u64)| std::cmp::Reverse(l.1));
-    event(json!({"event": "start", "scan": "tmpdir"}));
+    event(Event::Start, json!({"scan": "tmpdir"}));
     let groups = tmpdir(&covered);
-    event(json!({"event": "start", "scan": "orphans"}));
+    event(Event::Start, json!({"scan": "orphans"}));
     let orphans = orphans(&covered)?;
     let large: Vec<Value> =
         large.iter().take(SHOWN).map(|(p, b)| json!({"path": p, "bytes": b})).collect();
@@ -108,7 +108,7 @@ fn sizes(dir: &Path, covered: &Covered, large: &mut Vec<(String, u64)>) -> u64 {
         total = total.saturating_add(child);
     }
     if total >= large_size() && !large_child {
-        event(json!({"event": "large", "path": text, "bytes": total}));
+        event(Event::Large, json!({"path": text, "bytes": total}));
         large.push((text.into_owned(), total));
     }
     total
@@ -137,7 +137,7 @@ fn tmpdir(covered: &Covered) -> Vec<Value> {
         .take(SHOWN)
         .map(|(prefix, entries, bytes)| {
             let v = json!({"group": prefix, "glob": format!("$TMPDIR/{prefix}*"), "entries": entries, "bytes": bytes});
-            event(json!({"event": "tmpdir", "group": prefix, "entries": entries, "bytes": bytes}));
+            event(Event::Tmpdir, json!({"group": prefix, "entries": entries, "bytes": bytes}));
             v
         })
         .collect()
@@ -167,7 +167,7 @@ fn orphans(covered: &Covered) -> Result<Vec<Value>> {
         if bytes < ORPHAN_MIN {
             continue;
         }
-        event(json!({"event": "orphan", "path": text, "bytes": bytes}));
+        event(Event::Orphan, json!({"path": text, "bytes": bytes}));
         out.push(json!({
             "path": text,
             "bytes": bytes,

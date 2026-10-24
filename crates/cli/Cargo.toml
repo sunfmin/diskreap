@@ -11,6 +11,7 @@ autotests = false
 diskreap-rules = { path = "../rules" }
 diskreap-judge = { path = "../judge" }
 anyhow = "1"
+agent-help = { git = "https://github.com/sunfmin/agent-cli" }
 clap = { version = "4", features = ["derive"] }
 serde_json.workspace = true
 

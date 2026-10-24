@@ -6,6 +6,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::time::Instant;
 
+use agent_help::Table;
 use anyhow::Result;
 use diskreap_judge::{Facts, Git, Judged, Verdict, judge, judged_json, summary};
 use diskreap_rules::{Glob, Rule, compile, floor};
@@ -15,10 +16,33 @@ use crate::system::{self, Apps, Open};
 use crate::walk;
 use crate::world::World;
 
-/// Writes one event as a line of JSON on stderr, as it happens.
-pub fn event(value: Value) {
+/// What an event on stderr says happened, as its `"event"` key names it.
+#[derive(Clone, Copy, agent_help::Help)]
+pub enum Event {
+    /// A Rule's walk starts (`rule`, `glob`), or a part of scan does (`scan`).
+    Start,
+    /// A Match was judged: `rule`, `path`, `bytes`, `verdict`, and `holds` when held.
+    Match,
+    /// clean deleted a Match: as `match` says it.
+    Deleted,
+    /// clean could not delete a Match: as `match` says it, and `error`.
+    Failed,
+    /// A Rule is done: `rule`, `matched`, `deletable`, `seconds`.
+    Rule,
+    /// scan found a large directory no Rule covers: `path`, `bytes`.
+    Large,
+    /// scan grouped $TMPDIR's entries made by one program: `group`, `entries`, `bytes`.
+    Tmpdir,
+    /// scan found an Application Support directory no installed app resembles: `path`, `bytes`.
+    Orphan,
+}
+
+/// Writes one event as a line of JSON on stderr, as it happens: `said`, an
+/// object, with `"event"` naming what happened.
+pub fn event(happened: Event, mut said: Value) {
+    said["event"] = json!(happened.entry().name);
     let mut err = std::io::stderr().lock();
-    let _ = writeln!(err, "{value}");
+    let _ = writeln!(err, "{said}");
     let _ = err.flush();
 }
 
@@ -119,7 +143,7 @@ impl<'a> Run<'a> {
         let places = &world.places;
         let mut lanes = Vec::new();
         for rule in rules {
-            event(json!({"event": "start", "rule": rule.id, "glob": rule.glob}));
+            event(Event::Start, json!({"rule": rule.id, "glob": rule.glob}));
             lanes.push(self.lane(rule)?);
         }
         let owned: Vec<(usize, Glob, &[String])> = lanes
@@ -170,24 +194,24 @@ impl<'a> Run<'a> {
             let one =
                 Judged { path: text.clone(), bytes: tree.bytes, complete: tree.complete, verdict };
             let mut said = judged_json(&one);
-            said["event"] = json!("match");
             said["rule"] = json!(lane.rule.id);
+            let mut happened = Event::Match;
             // A walk cut short found a Hold; it never deletes, whatever the Verdict.
             if delete && one.verdict == Verdict::Delete && tree.complete {
                 match walk::delete(&path) {
                     Ok(()) => {
                         lane.deleted = lane.deleted.saturating_add(1);
                         lane.deleted_bytes = lane.deleted_bytes.saturating_add(tree.bytes);
-                        said["event"] = json!("deleted");
+                        happened = Event::Deleted;
                     }
                     Err(e) => {
                         lane.failed.push(json!({"path": text, "error": e.to_string()}));
-                        said["event"] = json!("failed");
+                        happened = Event::Failed;
                         said["error"] = json!(e.to_string());
                     }
                 }
             }
-            event(said);
+            event(happened, said);
             lane.judged.push(one);
         };
         if self.only.is_empty() {
@@ -225,7 +249,7 @@ impl<'a> Run<'a> {
                         a
                     }
                 };
-                event(json!({"event": "rule", "rule": lane.rule.id, "matched": answer["matched"], "deletable": answer["deletable"], "seconds": took}));
+                event(Event::Rule, json!({"rule": lane.rule.id, "matched": answer["matched"], "deletable": answer["deletable"], "seconds": took}));
                 (lane.rule.id.clone(), answer)
             })
             .collect())
