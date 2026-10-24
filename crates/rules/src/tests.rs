@@ -211,3 +211,28 @@ fn a_marker_is_one_file_or_a_list_of_which_one_must_be_there() {
         assert!(faults.iter().any(|f| f.contains("has the marker")), "{bad}: {faults:?}");
     }
 }
+
+#[test]
+fn every_root_starts_a_glob_at_its_place() {
+    let p = places();
+    for root in Root::ALL {
+        let g = compile(&format!("{}/a/b/x*", root.name()), &p).unwrap();
+        assert_eq!(g.base, format!("{}/a/b", p.of(root)));
+        let fault = compile("/a/b/x*", &p).unwrap_err();
+        assert!(fault.contains(&format!("`{}/`", root.name())), "{fault}");
+    }
+    assert!(compile("$TMPDIRX/a/b/x*", &p).is_err());
+    assert!(compile("~x/a/b/x*", &p).is_err());
+}
+
+#[test]
+fn every_age_unit_reads_and_writes_back() {
+    for unit in AgeUnit::ALL {
+        let text = format!("3{}", unit.letter());
+        let age = parse_age(&text).unwrap();
+        assert_eq!(age.secs(), 3 * unit.secs());
+        assert_eq!(age_text(age), text);
+        let fault = parse_age("1y").unwrap_err();
+        assert!(fault.contains(unit.letter()) && fault.contains(unit.name()), "{fault}");
+    }
+}

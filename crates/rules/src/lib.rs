@@ -44,27 +44,70 @@ impl Age {
 /// One day: what a Rule waits for unless it says otherwise.
 pub const ONE_DAY: Age = Age::new(86_400);
 
+/// A unit an age is written in, after its whole number.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgeUnit {
+    Minute,
+    Hour,
+    Day,
+    Week,
+}
+
+impl AgeUnit {
+    /// Every unit, smallest first.
+    pub const ALL: [AgeUnit; 4] = [AgeUnit::Minute, AgeUnit::Hour, AgeUnit::Day, AgeUnit::Week];
+
+    /// The letter it is written with: `m`, `h`, `d` or `w`.
+    pub const fn letter(self) -> char {
+        match self {
+            AgeUnit::Minute => 'm',
+            AgeUnit::Hour => 'h',
+            AgeUnit::Day => 'd',
+            AgeUnit::Week => 'w',
+        }
+    }
+
+    /// Its name in words, plural.
+    pub const fn name(self) -> &'static str {
+        match self {
+            AgeUnit::Minute => "minutes",
+            AgeUnit::Hour => "hours",
+            AgeUnit::Day => "days",
+            AgeUnit::Week => "weeks",
+        }
+    }
+
+    /// How many seconds one of it is, never zero.
+    #[spec(fn(AgeUnit) -> u64{v: 0 < v})]
+    pub const fn secs(self) -> u64 {
+        match self {
+            AgeUnit::Minute => 60,
+            AgeUnit::Hour => 3_600,
+            AgeUnit::Day => 86_400,
+            AgeUnit::Week => 604_800,
+        }
+    }
+}
+
 /// Reads an age written as a whole number and a unit: `30m`, `12h`, `1d`, `2w`.
 pub fn parse_age(text: &str) -> Result<Age, String> {
     let fault = || {
+        let letters: Vec<String> = AgeUnit::ALL.iter().map(|u| u.letter().to_string()).collect();
+        let names: Vec<&str> = AgeUnit::ALL.iter().map(|u| u.name()).collect();
         format!(
-            "the age `{text}` is not a whole number followed by m, h, d or w (minutes, hours, days, weeks): write it like `1d` or `12h`"
+            "the age `{text}` is not a whole number followed by {} ({}): write it like `1d` or `12h`",
+            listed(&letters, "or"),
+            names.join(", ")
         )
     };
-    let unit = text.chars().last().ok_or_else(fault)?;
-    let per: u64 = match unit {
-        'm' => 60,
-        'h' => 3_600,
-        'd' => 86_400,
-        'w' => 604_800,
-        _ => return Err(fault()),
-    };
-    let digits = text.strip_suffix(unit).ok_or_else(fault)?;
+    let letter = text.chars().last().ok_or_else(fault)?;
+    let unit = AgeUnit::ALL.into_iter().find(|u| u.letter() == letter).ok_or_else(fault)?;
+    let digits = text.strip_suffix(letter).ok_or_else(fault)?;
     if digits.is_empty() || !digits.chars().all(|c| c.is_ascii_digit()) {
         return Err(fault());
     }
     let count: u64 = digits.parse().map_err(|_| fault())?;
-    let secs = count.checked_mul(per).ok_or_else(fault)?;
+    let secs = count.checked_mul(unit.secs()).ok_or_else(fault)?;
     if secs == 0 {
         return Err(format!("the age `{text}` is zero: a Rule waits at least a minute, `1m`"));
     }
@@ -77,16 +120,19 @@ pub fn parse_age(text: &str) -> Result<Age, String> {
 /// Writes an age back in the largest unit that holds it whole.
 pub fn age_text(age: Age) -> String {
     let secs = age.secs();
-    if secs.is_multiple_of(604_800) {
-        format!("{}w", secs / 604_800)
-    } else if secs.is_multiple_of(86_400) {
-        format!("{}d", secs / 86_400)
-    } else if secs.is_multiple_of(3_600) {
-        format!("{}h", secs / 3_600)
-    } else if secs.is_multiple_of(60) {
-        format!("{}m", secs / 60)
-    } else {
-        format!("{secs}s")
+    match AgeUnit::ALL.into_iter().rev().find(|u| secs.is_multiple_of(u.secs())) {
+        Some(unit) => format!("{}{}", secs / unit.secs(), unit.letter()),
+        None => format!("{secs}s"),
+    }
+}
+
+/// Items as a person lists them, with `word` before the last: for `or`,
+/// `a`, `a or b`, `a, b or c`.
+pub fn listed(items: &[String], word: &str) -> String {
+    match items.split_last() {
+        None => String::new(),
+        Some((last, [])) => last.clone(),
+        Some((last, rest)) => format!("{} {word} {last}", rest.join(", ")),
     }
 }
 
@@ -120,7 +166,49 @@ pub struct Places {
     pub var_folder: String,
 }
 
+/// A place a glob starts at, written as its variable and a `/`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Root {
+    Home,
+    Tmpdir,
+    VarFolder,
+}
+
+impl Root {
+    /// Every root, in the order the help names them.
+    pub const ALL: [Root; 3] = [Root::Home, Root::Tmpdir, Root::VarFolder];
+
+    /// The variable it is written as: `~`, `$TMPDIR` or `$VARFOLDER`.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Root::Home => "~",
+            Root::Tmpdir => "$TMPDIR",
+            Root::VarFolder => "$VARFOLDER",
+        }
+    }
+
+    /// What it stands for, in words (see [`Places::new`]).
+    pub const fn what(self) -> &'static str {
+        match self {
+            Root::Home => "the home directory",
+            Root::Tmpdir => "the temporary directory",
+            Root::VarFolder => {
+                "your own entry under `/var/folders`: the temporary directory's parent when that is named `T`"
+            }
+        }
+    }
+}
+
 impl Places {
+    /// The absolute path a root stands for.
+    pub fn of(&self, root: Root) -> &str {
+        match root {
+            Root::Home => &self.home,
+            Root::Tmpdir => &self.tmpdir,
+            Root::VarFolder => &self.var_folder,
+        }
+    }
+
     /// The places for a home and a temporary directory as the environment
     /// gives them. The user's `/var/folders` entry is the temporary
     /// directory's parent when it is macOS's `…/T`, and otherwise the
@@ -369,19 +457,19 @@ impl Glob {
 }
 
 /// Expands a glob's variable and splits it, refusing what the floor forbids:
-/// a glob starts at `~/`, `$TMPDIR/` or `$VARFOLDER/`, holds no `.` or `..`,
+/// a glob starts at a [`Root`], holds no `.` or `..`,
 /// does not end in `**`, and cannot reach the shallow directories the floor
 /// keeps (see [`floor`]).
 pub fn compile(glob: &str, places: &Places) -> Result<Glob, String> {
-    let (root, rest) = if let Some(rest) = glob.strip_prefix("~/") {
-        (places.home.as_str(), rest)
-    } else if let Some(rest) = glob.strip_prefix("$TMPDIR/") {
-        (places.tmpdir.as_str(), rest)
-    } else if let Some(rest) = glob.strip_prefix("$VARFOLDER/") {
-        (places.var_folder.as_str(), rest)
-    } else {
+    let started = Root::ALL.into_iter().find_map(|root| {
+        let rest = glob.strip_prefix(root.name())?.strip_prefix('/')?;
+        Some((places.of(root), rest))
+    });
+    let Some((root, rest)) = started else {
+        let roots: Vec<String> = Root::ALL.iter().map(|r| format!("`{}/`", r.name())).collect();
         return Err(format!(
-            "the glob `{glob}` does not start at `~/`, `$TMPDIR/` or `$VARFOLDER/`: start it at one of them"
+            "the glob `{glob}` does not start at {}: start it at one of them",
+            listed(&roots, "or")
         ));
     };
     let mut base = root.to_string();

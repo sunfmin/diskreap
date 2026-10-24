@@ -153,3 +153,21 @@ fn every_example_rule_is_one_rule_check_takes() {
         );
     }
 }
+
+/// The glob roots and age units the help names are the ones the code reads.
+#[test]
+fn the_manual_names_every_root_and_age_unit() {
+    use diskreap_rules::{AgeUnit, Root};
+    let manual = diskreap::manual().manual().unwrap();
+    for root in Root::ALL {
+        assert!(manual.contains(&format!("`{}/`", root.name())), "{}", root.name());
+        assert!(manual.contains(&format!("`{}`", root.name())), "{}", root.name());
+    }
+    for unit in AgeUnit::ALL {
+        assert!(
+            manual.contains(&format!("`{}` ({})", unit.letter(), unit.name())),
+            "{}",
+            unit.name()
+        );
+    }
+}
