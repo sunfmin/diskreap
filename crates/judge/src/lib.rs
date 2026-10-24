@@ -64,20 +64,34 @@ pub enum Hold {
     OtherVolume,
 }
 
+/// Every Hold's kind, as a run counts it, in the order [`Hold`] declares them.
+pub const HOLD_KEYS: [&str; 10] = [
+    "floor",
+    "recent",
+    "in_use",
+    "running",
+    "installed",
+    "not_yours",
+    "unreadable",
+    "git_tracked",
+    "holds_repo",
+    "other_volume",
+];
+
 impl Hold {
-    /// The Hold's kind, as a run counts it.
+    /// The Hold's kind, as a run counts it: its entry in [`HOLD_KEYS`].
     pub fn key(&self) -> &'static str {
         match self {
-            Hold::Floor(_) => "floor",
-            Hold::Recent(_) => "recent",
-            Hold::InUse => "in_use",
-            Hold::Running(_) => "running",
-            Hold::Installed(_) => "installed",
-            Hold::Foreign => "not_yours",
-            Hold::Unreadable => "unreadable",
-            Hold::NotIgnored => "git_tracked",
-            Hold::HoldsRepo => "holds_repo",
-            Hold::OtherVolume => "other_volume",
+            Hold::Floor(_) => HOLD_KEYS[0],
+            Hold::Recent(_) => HOLD_KEYS[1],
+            Hold::InUse => HOLD_KEYS[2],
+            Hold::Running(_) => HOLD_KEYS[3],
+            Hold::Installed(_) => HOLD_KEYS[4],
+            Hold::Foreign => HOLD_KEYS[5],
+            Hold::Unreadable => HOLD_KEYS[6],
+            Hold::NotIgnored => HOLD_KEYS[7],
+            Hold::HoldsRepo => HOLD_KEYS[8],
+            Hold::OtherVolume => HOLD_KEYS[9],
         }
     }
 
