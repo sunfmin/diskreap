@@ -172,7 +172,7 @@ dependencies = [
 
 [[package]]
 name = "diskreap"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "agent-help",
  "anyhow",
@@ -185,7 +185,7 @@ dependencies = [
 
 [[package]]
 name = "diskreap-judge"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "diskreap-rules",
  "flux-alloc",
@@ -197,7 +197,7 @@ dependencies = [
 
 [[package]]
 name = "diskreap-rules"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "flux-alloc",
  "flux-core",
