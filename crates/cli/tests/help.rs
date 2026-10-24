@@ -3,23 +3,38 @@
 
 use crate::common::Env;
 
-/// The commands that answer one JSON object.
-const COMMANDS: [&str; 10] = [
-    "init",
-    "doctor",
-    "plan",
-    "clean",
-    "scan",
-    "rule list",
-    "rule check",
-    "rule add",
-    "rule set",
-    "rule rm",
-];
+/// Every command as it is run (`rule list`), read from the command clap
+/// parses with, so a command added is a command tested.
+fn commands() -> Vec<String> {
+    fn walk(prefix: &str, command: &clap::Command, all: &mut Vec<String>) {
+        for sub in command.get_subcommands() {
+            let name = format!("{prefix}{}", sub.get_name());
+            all.push(name.clone());
+            walk(&format!("{name} "), sub, all);
+        }
+    }
+    let mut all = Vec::new();
+    walk("", &diskreap::manual().clap().unwrap(), &mut all);
+    all
+}
 
+/// The commands that answer one JSON object: every one that runs, all but
+/// `help`, which answers Markdown, and a group such as `rule`.
+fn answering() -> Vec<String> {
+    let parents: Vec<String> = commands()
+        .iter()
+        .filter_map(|c| c.rsplit_once(' ').map(|(parent, _)| parent.to_string()))
+        .collect();
+    commands().into_iter().filter(|c| c != "help" && !parents.contains(c)).collect()
+}
+
+/// Whole: every command has text, every `help:` link and placeholder names
+/// something, no topic twice, every command in a group. Each fault is named.
 #[test]
 fn the_manual_is_whole() {
-    agent_help::check(&diskreap::manual()).unwrap();
+    if let Err(faults) = agent_help::check(&diskreap::manual()) {
+        panic!("the manual is not whole:\n{faults}");
+    }
 }
 
 #[test]
@@ -38,7 +53,7 @@ fn help_answers_the_whole_manual() {
 fn each_command_answers_its_own_section() {
     let env = Env::new();
     let manual = env.run(&["--help"]).stdout;
-    for command in COMMANDS.iter().chain(&["rule", "help"]) {
+    for command in commands() {
         for flag in ["--help", "-h"] {
             let mut args: Vec<&str> = command.split(' ').collect();
             args.push(flag);
@@ -50,7 +65,7 @@ fn each_command_answers_its_own_section() {
             assert!(manual.contains(text), "{command}: its section is not the manual's");
         }
     }
-    for command in COMMANDS {
+    for command in answering() {
         let args: Vec<&str> = command.split(' ').chain(["--help"]).collect();
         assert!(env.run(&args).stdout.contains("Answers"), "{command} says no answer");
     }
@@ -74,7 +89,7 @@ fn the_manual_names_only_commands_there_are() {
         .collect();
     named.sort();
     named.dedup();
-    assert!(named.len() >= COMMANDS.len(), "{named:?}");
+    assert!(named.len() >= answering().len(), "{named:?}");
     for command in named {
         let args: Vec<&str> = command.split(' ').chain(["--help"]).collect();
         let out = env.run(&args);
@@ -89,7 +104,7 @@ fn the_short_help_is_one_screen() {
     let out = env.run(&["-h"]);
     assert_eq!(out.code, 0);
     assert!(out.stdout.lines().count() <= 24, "{}", out.stdout);
-    for command in ["init", "doctor", "plan", "clean", "scan", "rule", "help"] {
+    for command in commands().iter().filter(|c| !c.contains(' ')) {
         assert!(out.stdout.contains(&format!("  {command} ")), "{command}: {}", out.stdout);
     }
     assert!(out.stdout.contains("diskreap --help"), "{}", out.stdout);
