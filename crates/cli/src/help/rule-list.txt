@@ -1,8 +1,0 @@
-diskreap rule list — print the Rule list.
-
-WHO    Anyone. READS the gist. WRITES nothing.
-
-ANSWERS
-  gist    the gist's id
-  rules   each Rule: id, glob, marker?, min_age, unless_running?,
-          unless_installed?, why

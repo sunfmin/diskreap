@@ -1,18 +1,20 @@
 //! The effect layer: reads the world, asks the pure crates what to make of
 //! it, acts, and prints the answer. Every command prints one JSON object on
 //! stdout and, while it walks, one JSON event a line on stderr; `--help`,
-//! `-h` and `--version` print text.
+//! `-h`, `help` and `--version` print text.
 
 use std::ffi::OsString;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use agent_help::Help;
 use anyhow::{Result, anyhow, bail};
-use clap::{Parser, Subcommand};
+use clap::FromArgMatches;
 use diskreap_rules::{FILE, Rule, parse_age, parse_list, parse_rule, rule_json};
 use serde_json::{Value, json};
 
+mod cli;
 mod gh;
 mod par;
 mod run;
@@ -24,112 +26,27 @@ mod world;
 /// What this binary was built from, as `--version` says it: stamped by `build.rs`.
 pub const VERSION: &str = env!("DISKREAP_VERSION");
 
-/// The guide `--help` prints, and the one screen `-h` prints.
-pub const GUIDE: &str = concat!(include_str!("help.txt"), "\n", include_str!("help/examples.txt"));
-pub const SCREEN: &str = include_str!("short.txt");
+pub use cli::manual;
+use cli::{Cli, Command, RuleCommand};
 
-/// Each subcommand's help, by the words that name it.
-pub const HELP: [(&str, &str); 10] = [
-    ("init", include_str!("help/init.txt")),
-    ("doctor", include_str!("help/doctor.txt")),
-    ("plan", include_str!("help/plan.txt")),
-    ("clean", include_str!("help/clean.txt")),
-    ("scan", include_str!("help/scan.txt")),
-    ("rule list", include_str!("help/rule-list.txt")),
-    ("rule check", include_str!("help/rule-check.txt")),
-    (
-        "rule add",
-        concat!(include_str!("help/rule-add.txt"), "\n", include_str!("help/examples.txt")),
-    ),
-    ("rule set", include_str!("help/rule-set.txt")),
-    ("rule rm", include_str!("help/rule-rm.txt")),
-];
-
-#[derive(Parser)]
-#[command(name = "diskreap", version = VERSION, disable_help_flag = true, disable_help_subcommand = true)]
-struct Cli {
-    #[command(subcommand)]
-    command: Command,
-}
-
-#[derive(Subcommand)]
-enum Command {
-    /// Make the private gist that keeps the Rule list, if there is none
-    Init,
-    /// Check everything diskreap needs, changing nothing
-    Doctor,
-    /// Say what clean would delete and what it would hold, changing nothing
-    Plan {
-        /// Only this Rule, by id
-        #[arg(long)]
-        rule: Option<String>,
-        /// Only these paths, those that are Matches; `-` reads them from stdin
-        #[arg(long)]
-        path: Vec<PathBuf>,
-        /// Name every Match, not only the largest ten of each Rule
-        #[arg(long)]
-        all: bool,
-    },
-    /// Delete the paths named that are Matches nothing holds
-    Clean {
-        /// Only this Rule, by id
-        #[arg(long)]
-        rule: Option<String>,
-        /// The paths to delete, from a reviewed plan; `-` reads them from stdin
-        #[arg(long)]
-        path: Vec<PathBuf>,
-        /// Name every Match, not only the largest ten of each Rule
-        #[arg(long)]
-        all: bool,
-    },
-    /// Find large directories no Rule covers, deleting nothing
-    Scan,
-    /// Read and change the Rule list
-    Rule {
-        #[command(subcommand)]
-        command: RuleCommand,
-    },
-}
-
-#[derive(Subcommand)]
-enum RuleCommand {
-    /// Print the Rule list
-    List,
-    /// Say what a Rule would match and hold, without adding it
-    Check {
-        /// The Rule as JSON, or `-` to read it from stdin
-        rule: String,
-        /// Name every Match, not only the largest ten
-        #[arg(long)]
-        all: bool,
-    },
-    /// Add a Rule a person agreed to
-    Add {
-        /// The Rule as JSON, or `-` to read it from stdin
-        rule: String,
-    },
-    /// Change a Rule's Minimum age or why
-    Set {
-        id: String,
-        #[arg(long)]
-        min_age: Option<String>,
-        #[arg(long)]
-        why: Option<String>,
-    },
-    /// Remove a Rule
-    Rm { id: String },
-}
+agent_help::binary!("diskreap");
 
 /// Runs diskreap with these arguments, the program's name first.
 pub fn main(args: Vec<OsString>) -> ExitCode {
-    if let Some(text) = help(&args) {
-        print!("{text}");
+    if let Some(screen) = cli::screen(&args) {
+        print!("{screen}");
         return ExitCode::SUCCESS;
     }
-    let cli = match Cli::try_parse_from(&args) {
+    let help = manual();
+    let tool = match help.clap() {
+        Ok(command) => command,
+        Err(e) => return fail(&format!("{e}")),
+    };
+    let cli = match tool.try_get_matches_from(&args).and_then(|m| Cli::from_arg_matches(&m)) {
         Ok(cli) => cli,
-        Err(e) if e.kind() == clap::error::ErrorKind::DisplayVersion => {
-            println!("diskreap {VERSION}");
+        // `--help`, `-h` after a command, and `--version`: their text, on stdout.
+        Err(e) if !e.use_stderr() => {
+            print!("{}", e.render());
             return ExitCode::SUCCESS;
         }
         Err(e) => {
@@ -140,9 +57,9 @@ pub fn main(args: Vec<OsString>) -> ExitCode {
             ));
         }
     };
-    match command(cli.command) {
-        Ok(answer) => {
-            println!("{answer}");
+    match command(cli.command, &help) {
+        Ok(said) => {
+            print!("{said}");
             ExitCode::SUCCESS
         }
         Err(e) => fail(&format!("{e:#}")),
@@ -154,39 +71,28 @@ fn fail(message: &str) -> ExitCode {
     ExitCode::FAILURE
 }
 
-/// The help asked for, if any: the guide or the one screen with no
-/// subcommand, the subcommand's own help after one.
-fn help(args: &[OsString]) -> Option<&'static str> {
-    let words: Vec<String> =
-        args.iter().skip(1).map(|a| a.to_string_lossy().into_owned()).collect();
-    let flag = words.iter().find(|w| *w == "--help" || *w == "-h")?;
-    let named: Vec<&str> =
-        words.iter().take_while(|w| !w.starts_with('-')).map(String::as_str).collect();
-    for n in (1..=named.len().min(2)).rev() {
-        let key = named[..n].join(" ");
-        if let Some((_, text)) = HELP.iter().find(|(k, _)| *k == key) {
-            return Some(text);
+/// What the command says on stdout: the manual's Markdown for `help`, else
+/// its one JSON object on a line.
+fn command(command: Command, help: &Help) -> Result<String> {
+    let answer = match command {
+        Command::Help { topic: None } => return Ok(help.manual()?),
+        Command::Help { topic: Some(topic) } => return Ok(help.topic_help(&topic)?),
+        Command::Init => init()?,
+        Command::Doctor => doctor(&world::read()?),
+        Command::Plan { rule, path, all } => {
+            plan(&world::read()?, rule.as_deref(), path, false, all)?
         }
-    }
-    if named.first() == Some(&"rule") {
-        return Some(include_str!("help/rule.txt"));
-    }
-    Some(if flag == "--help" { GUIDE } else { SCREEN })
-}
-
-fn command(command: Command) -> Result<Value> {
-    let world = world::read()?;
-    match command {
-        Command::Init => init(),
-        Command::Doctor => Ok(doctor(&world)),
-        Command::Plan { rule, path, all } => plan(&world, rule.as_deref(), path, false, all),
-        Command::Clean { rule, path, all } => plan(&world, rule.as_deref(), path, true, all),
+        Command::Clean { rule, path, all } => {
+            plan(&world::read()?, rule.as_deref(), path, true, all)?
+        }
         Command::Scan => {
+            let world = world::read()?;
             let (gist, rules) = gh::load(&world.places)?;
-            scan::scan(&world, &gist.id, &rules)
+            scan::scan(&world, &gist.id, &rules)?
         }
-        Command::Rule { command } => rule(&world, command),
-    }
+        Command::Rule(command) => rule(&world::read()?, command)?,
+    };
+    Ok(format!("{answer}\n"))
 }
 
 fn init() -> Result<Value> {

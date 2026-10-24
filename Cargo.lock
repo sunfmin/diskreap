@@ -3,6 +3,28 @@
 version = 4
 
 [[package]]
+name = "agent-help"
+version = "0.1.0"
+source = "git+https://github.com/sunfmin/agent-cli#f82419e283ca8e02a03abf6b1ec22ec1f6ad1f33"
+dependencies = [
+ "agent-help-derive",
+ "clap",
+ "flux-alloc",
+ "flux-core",
+]
+
+[[package]]
+name = "agent-help-derive"
+version = "0.1.0"
+source = "git+https://github.com/sunfmin/agent-cli#f82419e283ca8e02a03abf6b1ec22ec1f6ad1f33"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "anstream"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -152,6 +174,7 @@ dependencies = [
 name = "diskreap"
 version = "0.6.0"
 dependencies = [
+ "agent-help",
  "anyhow",
  "clap",
  "diskreap-judge",

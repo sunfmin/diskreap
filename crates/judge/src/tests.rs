@@ -49,21 +49,7 @@ fn every_hold_is_named() {
     };
     let Verdict::Hold(holds) = judge(&f, day(), NOW, &places()) else { panic!("deleted") };
     let keys: Vec<_> = holds.iter().map(Hold::key).collect();
-    assert_eq!(
-        keys,
-        [
-            "floor",
-            "recent",
-            "in_use",
-            "running",
-            "installed",
-            "not_yours",
-            "unreadable",
-            "git_tracked",
-            "holds_repo",
-            "other_volume"
-        ]
-    );
+    assert_eq!(keys, HOLD_KEYS);
     assert_eq!(holds[1].text(), "changed or used too recently: it may go in 24h");
 }
 

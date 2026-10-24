@@ -59,11 +59,14 @@ pub fn find() -> Result<Vec<String>> {
     Ok(ids(gh(&["api", "--paginate", "/gists?per_page=100", "--jq", &jq], None)?))
 }
 
-/// Where the id of the gist found last is kept, so a run need not list
-/// every gist: `~/.config/diskreap/gist`. It is only a shortcut; a gist it
-/// names that is gone or holds no Rule list is looked for again.
+/// Where the id of the gist found last is kept, under the home directory, so
+/// a run need not list every gist. It is only a shortcut; a gist it names
+/// that is gone or holds no Rule list is looked for again.
+pub const CACHE: &str = ".config/diskreap/gist";
+
+/// [`CACHE`] in this home directory.
 pub fn cache() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config/diskreap/gist"))
+    std::env::var_os("HOME").map(|h| PathBuf::from(h).join(CACHE))
 }
 
 fn remember(id: &str) {
