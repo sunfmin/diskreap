@@ -1,0 +1,23 @@
+[package]
+name = "diskreap"
+description = "An agent CLI that frees disk space by Rules kept in a private gist, deleting only what is safe"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+autotests = false
+
+[dependencies]
+diskreap-rules = { path = "../rules" }
+diskreap-judge = { path = "../judge" }
+anyhow = "1"
+agent-help = { git = "https://github.com/sunfmin/agent-cli" }
+clap = { version = "4", features = ["derive"] }
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+
+[[test]]
+name = "cli"
+path = "tests/main.rs"
